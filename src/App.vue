@@ -3,6 +3,10 @@ import { nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
 const STORAGE_KEY = 'eggbuddy-v1'
 
+// Public-dir assets referenced from JS aren't rewritten by the bundler, so they
+// need BASE_URL prepended by hand to survive being served from a subpath.
+const asset = (path) => `${import.meta.env.BASE_URL}${path}`
+
 const eggs = [
   ['Sunny Maxx', 'Sunnymaxx.png', 'Common'],
   ['Eggstein', 'Eggstein.png', 'Rare'],
@@ -345,7 +349,7 @@ onUnmounted(() => {
     </header>
 
     <!-- Don't spend 1.4MB on someone who loaded the page muted; unmuting fetches it. -->
-    <audio ref="bgm" src="/bgm/bgm.mp3" loop :preload="state.muted ? 'none' : 'auto'"></audio>
+    <audio ref="bgm" :src="asset('bgm/bgm.mp3')" loop :preload="state.muted ? 'none' : 'auto'"></audio>
 
     <main>
       <section class="hero card">
@@ -470,7 +474,7 @@ onUnmounted(() => {
           <article v-for="egg in eggs" :key="egg.id" role="listitem" :class="['egg-card', !owned(egg.id) && 'locked']">
             <div class="art">
               <img
-                :src="`/eggs/${egg.image}`"
+                :src="asset(`eggs/${egg.image}`)"
                 :alt="owned(egg.id) ? egg.name : 'Undiscovered egg'"
               >
               <div v-if="!owned(egg.id)" class="lock">?</div>
@@ -496,7 +500,7 @@ onUnmounted(() => {
           >
             <span class="reveal-eyebrow">{{ revealEgg.fresh ? '✨ NEW EGG!' : 'ANOTHER ONE' }}</span>
             <div :class="['reveal-art', `aura-${revealEgg.rarity.toLowerCase()}`]">
-              <img :src="`/eggs/${revealEgg.image}`" alt="">
+              <img :src="asset(`eggs/${revealEgg.image}`)" alt="">
               <i v-for="s in 4" :key="s" :class="`reveal-spark spark-${s}`" aria-hidden="true">✦</i>
             </div>
             <h2>{{ revealEgg.name }}</h2>
