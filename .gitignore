@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.gstack/
+
+.DS_Store
+*.log
+.vite/
