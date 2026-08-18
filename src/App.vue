@@ -1,24 +1,14 @@
 <script setup>
-import { nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { asset } from './assets.js'
+import { eggs, randomEggOfRarity, rollEggRarity } from './eggs.js'
+import { worlds } from './game/worlds.js'
 
 const STORAGE_KEY = 'eggbuddy-v1'
 
-// Public-dir assets referenced from JS aren't rewritten by the bundler, so they
-// need BASE_URL prepended by hand to survive being served from a subpath.
-const asset = (path) => `${import.meta.env.BASE_URL}${path}`
-
-const eggs = [
-  ['Sunny Maxx', 'Sunnymaxx.png', 'Common'],
-  ['Eggstein', 'Eggstein.png', 'Rare'],
-  ['Goodbooi', 'Goodbooi.png', 'Common'],
-  ['Walao Egg', 'Walaoegg.png', 'Rare'],
-  ['Eggxercise', 'Eggxercise.png', 'Common'],
-  ['Eggcited', 'Eggcited.png', 'Common'],
-  ['Lovely AhMooi', 'Lovelyahmooi.png', 'Rare'],
-  ['Lucky Yolk', 'Luckyyork.png', 'Epic'],
-  ['Captain Shell', 'captain.png', 'Epic'],
-  ['Egglon Musk', 'Egglonmusk.png', 'Legendary'],
-].map((egg, id) => ({ id, name: egg[0], image: egg[1], rarity: egg[2] }))
+// Async so the overlay — and the Phaser chunk it dynamically imports — stays out of
+// the farm's initial bundle.
+const EggscapeOverlay = defineAsyncComponent(() => import('./components/EggscapeOverlay.vue'))
 
 // `key` matches the state field it stocks, so buy() stays data-driven.
 // Prices are set against the loop: 1 feed yields ~1.72 lays = ~34 coins, so feed
@@ -44,8 +34,23 @@ function defaultState() {
     collection: [0],
     lastTick: Date.now(),
     muted: false,
+    eggscape: { best: {}, runs: 0 },
     message: 'Your chicken is ready to start its EGGventure!',
   }
+}
+
+// The shallow merge in loadState() would happily restore `eggscape: 42` from a hand-edited
+// save, so the nested shape gets checked the same way `collection` does.
+function sanitizeEggscape(saved, fallback) {
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return fallback
+
+  const best = {}
+  for (const world of worlds) {
+    const value = saved.best?.[world.id]
+    if (Number.isFinite(value) && value > 0) best[world.id] = Math.floor(value)
+  }
+
+  return { best, runs: Number.isFinite(saved.runs) && saved.runs > 0 ? Math.floor(saved.runs) : 0 }
 }
 
 function loadState() {
@@ -63,6 +68,7 @@ function loadState() {
         : defaults.collection,
       lastTick: Number.isFinite(saved.lastTick) ? saved.lastTick : defaults.lastTick,
       muted: typeof saved.muted === 'boolean' ? saved.muted : defaults.muted,
+      eggscape: sanitizeEggscape(saved.eggscape, defaults.eggscape),
     }
   } catch {
     localStorage.removeItem(STORAGE_KEY)
@@ -96,6 +102,9 @@ function showReveal(payload) {
 
 function onKeydown(event) {
   if (event.key !== 'Escape') return
+  // The overlay owns Escape while it's up (it pauses instead of closing) and stops the
+  // event in the capture phase; this guard just makes that explicit.
+  if (eggscapeOpen.value) return
   closeReveal()
   closeShop()
 }
@@ -243,6 +252,17 @@ function rest() {
   say('A cozy nap restored some energy 💤')
 }
 
+// Shared by laying and by EGGSCAPE run drops: adds a new egg to the collection, or
+// pays the duplicate bounty. Returns whether it was new.
+const DUPLICATE_BOUNTY = 20
+
+function collectEgg(egg) {
+  const fresh = !state.collection.includes(egg.id)
+  if (fresh) state.collection.push(egg.id)
+  else state.coins += DUPLICATE_BOUNTY
+  return fresh
+}
+
 function layEgg() {
   closeReveal()
 
@@ -255,23 +275,14 @@ function layEgg() {
     return say(`${state.chickenName} is too tired to lay right now — try a nap. 💤`)
   }
 
-  const roll = Math.random()
-  let rarity = 'Common'
-  if (roll > 0.93) rarity = 'Legendary'
-  else if (roll > 0.78) rarity = 'Epic'
-  else if (roll > 0.48) rarity = 'Rare'
-
-  const pool = eggs.filter((egg) => egg.rarity === rarity)
-  const egg = pool[Math.floor(Math.random() * pool.length)]
+  const egg = randomEggOfRarity(rollEggRarity())
 
   state.eggsLaid++
   state.energy = clamp(state.energy - 22)
   state.hunger = clamp(state.hunger - 12)
   state.happiness = clamp(state.happiness + 5)
 
-  const fresh = !state.collection.includes(egg.id)
-  if (fresh) state.collection.push(egg.id)
-  else state.coins += 20
+  const fresh = collectEgg(egg)
 
   animateAction('lay', 2000)
   say(fresh
@@ -280,6 +291,66 @@ function layEgg() {
 
   // Land the reveal as the dropped egg settles (eggDrop ends at 1.75s).
   revealShowTimer = window.setTimeout(() => showReveal({ ...egg, fresh }), 1800)
+}
+
+// --- EGGSCAPE mini-game -----------------------------------------------------
+// A run costs energy up front and pays out on the results screen, so the runner is a
+// reason to keep the chicken fed rather than a way to bypass the farm.
+const RUN_ENERGY_COST = 15
+const RUN_HUNGER_COST = 5
+const RUN_MIN_ENERGY = 20
+// Feed costs 20 coins, so the cap keeps a great run worth ~4 feeds and no more —
+// the runner should top up the farm, not trivialise it.
+const RUN_COIN_CAP = 80
+const RUN_EGG_DROP_SCORE = 60
+
+const eggscapeOpen = ref(false)
+const canRunEggscape = computed(() => state.energy >= RUN_MIN_ENERGY)
+
+function openEggscape() {
+  if (!canRunEggscape.value) {
+    return say(`${state.chickenName} is too tired for an EGGSCAPE run — try a nap. 💤`)
+  }
+  closeReveal()
+  closeShop()
+  eggscapeOpen.value = true
+}
+
+function closeEggscape() {
+  eggscapeOpen.value = false
+}
+
+function onRunStart() {
+  state.energy = clamp(state.energy - RUN_ENERGY_COST)
+  state.hunger = clamp(state.hunger - RUN_HUNGER_COST)
+  state.eggscape.runs++
+}
+
+function onRunEnd(result) {
+  const payout = Math.min(RUN_COIN_CAP, Math.round(result.score / 4))
+  state.coins += payout
+  state.happiness = clamp(state.happiness + 8)
+
+  const best = state.eggscape.best[result.worldId] || 0
+  if (result.score > best) state.eggscape.best[result.worldId] = result.score
+
+  if (result.score < RUN_EGG_DROP_SCORE) {
+    return say(`EGGSCAPE run: ${result.score} points · +${payout} coins 🪙`)
+  }
+
+  // A strong run nudges the rarity roll, but only slightly — the ladder is still
+  // mostly luck, exactly as it is when laying.
+  const egg = randomEggOfRarity(rollEggRarity(Math.min(0.15, result.score / 1500)))
+  const fresh = collectEgg(egg)
+
+  say(fresh
+    ? `EGGSCAPE run: ${result.score} points · +${payout} coins · NEW EGG ${egg.name} 🎉`
+    : `EGGSCAPE run: ${result.score} points · +${payout} coins · another ${egg.name}`)
+
+  // Close the overlay first — the reveal is teleported to <body> and would otherwise
+  // stack behind the full-screen game.
+  closeEggscape()
+  revealShowTimer = window.setTimeout(() => showReveal({ ...egg, fresh }), 260)
 }
 
 function scan() {
@@ -446,6 +517,12 @@ onUnmounted(() => {
             <button type="button" @click="play">🪶 Play</button>
             <button type="button" @click="rest">💤 Nap</button>
             <button type="button" class="primary" @click="layEgg">🥚 Lay an Egg</button>
+            <button
+              type="button"
+              class="primary play-eggscape"
+              :title="canRunEggscape ? 'Play the EGGSCAPE runner' : 'Needs 20 energy'"
+              @click="openEggscape"
+            >🎮 Play EGGSCAPE <small>−{{ RUN_ENERGY_COST }}⚡</small></button>
           </div>
           <div class="message" role="status" aria-live="polite">{{ state.message }}</div>
         </div>
@@ -487,6 +564,19 @@ onUnmounted(() => {
     </main>
 
     <footer>EGGbuddy V1 prototype · Progress is saved in this browser</footer>
+
+    <Teleport to="body">
+      <EggscapeOverlay
+        v-if="eggscapeOpen"
+        :bests="state.eggscape.best"
+        :collection="state.collection"
+        :can-run="canRunEggscape"
+        :energy-cost="RUN_ENERGY_COST"
+        @close="closeEggscape"
+        @run-start="onRunStart"
+        @run-end="onRunEnd"
+      />
+    </Teleport>
 
     <Teleport to="body">
       <Transition name="reveal">
