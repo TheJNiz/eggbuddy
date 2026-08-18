@@ -10,6 +10,13 @@ export const REFERENCE_WIDTH = 800
 const GRAVITY = 2000
 const JUMP_VELOCITY = -720
 
+// The mid-air jump is deliberately weaker than the one off the ground: it extends a jump
+// rather than doubling its height, which keeps the arc inside the frame and makes when you
+// spend it matter. One per airborne stretch, refunded on landing.
+const AIR_JUMP_VELOCITY = JUMP_VELOCITY * 0.75
+const MAX_AIR_JUMPS = 1
+const AIR_SPIN_MS = 380
+
 // Air time is 2 * 720 / 2000 = 0.72s, so horizontal reach at the 420px/s top speed
 // is ~300px. Every spacing below is derived from that so no gap is ever unclearable.
 const AIR_TIME = (2 * Math.abs(JUMP_VELOCITY)) / GRAVITY
@@ -84,6 +91,8 @@ export default class RunScene extends Phaser.Scene {
     this.invulnerableUntil = 0
     this.lastGroundedAt = 0
     this.jumpQueuedAt = -Infinity
+    this.airJumpsUsed = 0
+    this.spinUntil = 0
     this.shieldActive = false
     this.dashUntil = 0
     this.luckUntil = 0
@@ -364,7 +373,9 @@ export default class RunScene extends Phaser.Scene {
 
     this.hero = this.physics.add.sprite(this.heroX, this.groundY, this.heroKey, frameName)
     this.hero.setScale(scale).setOrigin(0.5, 1)
-    this.hero.setDepth(5)
+    // Above the HUD (20/21). A double jump overshoots the HUD row on short canvases, and
+    // briefly covering the score beats the player losing sight of their egg behind it.
+    this.hero.setDepth(22)
 
     const bodyW = frame.width * HERO_BODY.width
     const bodyH = frame.height * HERO_BODY.height
@@ -374,6 +385,11 @@ export default class RunScene extends Phaser.Scene {
     this.hero.body.setOffset((frame.width - bodyW) / 2, frame.height - bodyH - HERO_SINK / scale)
     this.hero.body.setGravityY(GRAVITY)
 
+    // Stops a double jump carrying the egg off the top of the canvas. Expressed against
+    // the body, whose top sits well below the sprite's — the art has rays and hair above
+    // the hitbox, and ignoring that inset would let the egg's crown clip off screen.
+    this.heroCeiling = 2 + this.hero.body.offset.y * scale
+
     this.physics.add.collider(this.hero, this.groundBody, () => {
       if (!this.wasGrounded) this.onLand()
     })
@@ -381,7 +397,7 @@ export default class RunScene extends Phaser.Scene {
     this.shieldRing = this.add.circle(0, 0, 58, 0xffffff, 0)
       .setStrokeStyle(4, this.world.palette.accent, 0.9)
       .setVisible(false)
-      .setDepth(4)
+      .setDepth(21)
   }
 
   buildGroups() {
@@ -537,7 +553,9 @@ export default class RunScene extends Phaser.Scene {
       fontFamily: FONT, fontSize: '16px', fontStyle: '700', color: '#a2703a',
     }).setOrigin(0.5)
 
-    const cta = this.add.text(0, 34, this.compact ? 'TAP to jump' : 'TAP  ·  SPACE  ·  ▲   to jump', {
+    const cta = this.add.text(0, 34, this.compact
+      ? 'TAP to jump · again mid-air'
+      : 'TAP to jump  ·  TAP AGAIN mid-air to double jump', {
       fontFamily: FONT, fontSize: '15px', fontStyle: '800', color: '#2e7dd7',
     }).setOrigin(0.5)
 
@@ -627,6 +645,7 @@ export default class RunScene extends Phaser.Scene {
 
     this.scrollBackground(speed, dt)
     this.handleJump(time)
+    this.enforceCeiling()
     this.bobHero(time)
 
     this.hazards.setVelocityX(-speed)
@@ -655,19 +674,64 @@ export default class RunScene extends Phaser.Scene {
 
   handleJump(time) {
     const grounded = this.hero.body.blocked.down || this.hero.body.touching.down
-    if (grounded) this.lastGroundedAt = time
 
-    const canJump = grounded || time - this.lastGroundedAt <= COYOTE_MS
+    // `velocity.y >= 0` matters: the body can still report grounded for a frame on the way
+    // up, and without it the air jump would be refunded the instant it was spent.
+    if (grounded && this.hero.body.velocity.y >= 0) {
+      this.lastGroundedAt = time
+      this.airJumpsUsed = 0
+    }
+
     const buffered = time - this.jumpQueuedAt <= JUMP_BUFFER_MS
 
-    if (canJump && buffered) {
-      this.hero.body.setVelocityY(JUMP_VELOCITY)
-      this.jumpQueuedAt = -Infinity
-      this.lastGroundedAt = -Infinity
-      this.spawnDust(this.hero.x - 6, this.groundY, 3)
+    if (buffered) {
+      if (grounded || time - this.lastGroundedAt <= COYOTE_MS) {
+        this.jump(JUMP_VELOCITY)
+        this.lastGroundedAt = -Infinity
+        this.spawnDust(this.hero.x - 6, this.groundY, 3)
+      } else if (this.airJumpsUsed < MAX_AIR_JUMPS) {
+        this.airJumpsUsed++
+        this.jump(AIR_JUMP_VELOCITY)
+        this.airJumpFlourish(time)
+      }
     }
 
     this.wasGrounded = grounded
+  }
+
+  // Clamps the body rather than the sprite: Arcade syncs body -> GameObject in POST_UPDATE,
+  // which runs after scene.update(), so assigning hero.y here would just be overwritten.
+  enforceCeiling() {
+    if (this.hero.body.y >= this.heroCeiling) return
+    this.hero.body.y = this.heroCeiling
+    if (this.hero.body.velocity.y < 0) this.hero.body.setVelocityY(0)
+  }
+
+  // Clearing the buffered tap here is what stops a single tap spending both jumps.
+  jump(velocity) {
+    this.hero.body.setVelocityY(velocity)
+    this.jumpQueuedAt = -Infinity
+  }
+
+  // A puff at the egg's feet plus a flip, so the second jump reads as a deliberate move
+  // rather than the physics glitching.
+  airJumpFlourish(time) {
+    this.spawnDust(this.hero.x - 6, this.hero.y, 4)
+    if (this.reduceMotion) return
+
+    // Land-and-immediately-double-jump can start a second spin while the first still
+    // runs; two tweens writing the same angle fight each other, so the old one goes first
+    // and the angle is reset so every flip is a clean 0 -> 360.
+    this.spinTween?.stop()
+    this.hero.setAngle(0)
+
+    this.spinUntil = time + AIR_SPIN_MS
+    this.spinTween = this.tweens.add({
+      targets: this.hero,
+      angle: 360,
+      duration: AIR_SPIN_MS,
+      ease: 'Cubic.easeOut',
+    })
   }
 
   onLand() {
@@ -684,11 +748,16 @@ export default class RunScene extends Phaser.Scene {
 
   bobHero(time) {
     const airborne = !(this.hero.body.blocked.down || this.hero.body.touching.down)
-    if (airborne) {
-      const rising = this.hero.body.velocity.y < 0
-      this.hero.setAngle(Phaser.Math.Linear(this.hero.angle, rising ? -12 : 10, 0.12))
-    } else {
-      this.hero.setAngle(this.reduceMotion ? 0 : Math.sin(time / 70) * 4)
+
+    // The double-jump flip owns the angle while it runs, so leave it alone or the two
+    // fight each other every frame.
+    if (time >= this.spinUntil) {
+      if (airborne) {
+        const rising = this.hero.body.velocity.y < 0
+        this.hero.setAngle(Phaser.Math.Linear(this.hero.angle, rising ? -12 : 10, 0.12))
+      } else {
+        this.hero.setAngle(this.reduceMotion ? 0 : Math.sin(time / 70) * 4)
+      }
     }
 
     // Shadow shrinks with height, which is most of what sells the jump arc.

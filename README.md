@@ -25,8 +25,18 @@ npm run dev
 ## EGGSCAPE mini-game
 
 A Phaser 3 demo of the EGGSCAPE endless runner, playable from the farm's
-**🎮 Play EGGSCAPE** button. The egg auto-runs, one tap jumps — that is the whole
-control scheme, on a canvas or with Space / ArrowUp.
+**🎮 Play EGGSCAPE** button. The egg auto-runs and one tap jumps — that is the whole
+control scheme, on the canvas or with Space / ArrowUp.
+
+Tapping again in mid-air gives a **double jump**: one extra boost per airborne stretch,
+refunded on landing, at 75% of the ground jump's strength so it extends a jump rather than
+doubling its height (measured: ~123px of lift becomes ~174px). The egg flips as it fires,
+so the second jump is unmistakable.
+
+The double jump is a safety net, never a requirement — hazard spawning still guarantees
+everything is clearable in a *single* jump (see below). It does have a cost: a full double
+jump keeps the egg airborne ~1.08s against a spawn gap of ~0.85–1.0s, so spending it can
+carry you into the next hazard.
 
 Three launch worlds, matching the deck's Phase 1 shortlist:
 
