@@ -1500,3 +1500,343 @@ footer {
 
   .reveal-spark { opacity: 0; }
 }
+
+/* ---------------------------------------------------------------- EGGSCAPE */
+
+.eggscape-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding:
+    calc(12px + env(safe-area-inset-top))
+    calc(12px + env(safe-area-inset-right))
+    calc(12px + env(safe-area-inset-bottom))
+    calc(12px + env(safe-area-inset-left));
+  background: rgba(24, 20, 14, 0.82);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.eggscape-shell {
+  display: flex;
+  width: 100%;
+  max-width: 880px;
+  max-height: 100%;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 14px;
+  border: 2px solid #2f2a22;
+  border-radius: 22px;
+  background: #fff8e8;
+  box-shadow: 0 10px 0 rgba(0, 0, 0, 0.35);
+}
+
+.eggscape-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.eggscape-brand b {
+  display: block;
+  color: #c96300;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.eggscape-brand small {
+  color: #786c59;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.eggscape-bar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.eggscape-lede {
+  margin: 0 0 14px;
+  color: #786c59;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.eggscape-warning {
+  margin: -6px 0 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #ffe0e0;
+  color: #9c2b1e;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.world-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.world-card {
+  display: grid;
+  padding: 14px 12px 12px;
+  border: 2px solid #2f2a22;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 4px 0 #2f2a22;
+  cursor: pointer;
+  text-align: center;
+}
+
+.world-card:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #2f2a22;
+}
+
+.world-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.world-art {
+  display: block;
+  overflow: hidden;
+  height: 112px;
+}
+
+/* The badge PNGs carry the character's name on a plate in their lower third. The card
+   prints the world title itself, so the plate is cropped out here the same way the game
+   crops it off the running sprite. */
+.world-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 22%;
+  scale: 1.35;
+}
+
+.world-card b {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.world-card small {
+  color: #c96300;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.world-power {
+  margin-top: 8px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #f3e6ff;
+  color: #6b3bb0;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.world-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 9px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+}
+
+.world-meta i {
+  font-style: normal;
+  color: #786c59;
+}
+
+.world-meta .is-owned { color: #2f7d32; }
+.world-meta .is-locked { color: #a99a80; }
+
+.eggscape-stage {
+  position: relative;
+}
+
+/* An explicit aspect gives the box a definite height for Phaser's FIT to work against,
+   and createGame reads the same box back to choose a logical size that matches it — so
+   the game fills the frame instead of sitting in a letterboxed strip. max-height keeps a
+   short landscape window from pushing the card off screen; when it bites, the box just
+   gets relatively wider and the scene is built wider to suit. */
+.eggscape-canvas {
+  display: grid;
+  width: 100%;
+  max-height: calc(100dvh - 150px);
+  aspect-ratio: 16 / 9;
+  place-items: center;
+  line-height: 0;
+}
+
+/* Sized by Phaser's scale manager — the canvas must not be forced to the container's
+   width, or it can only ever be as tall as a 16:9 slice of it. The frame lives on the
+   canvas rather than the container so no empty gutter shows around a letterboxed game. */
+.eggscape-canvas canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  border: 2px solid #2f2a22;
+  border-radius: 16px;
+  background: #fff8e8;
+  touch-action: manipulation;
+}
+
+.eggscape-loading {
+  padding: 60px 0;
+  color: #786c59;
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.eggscape-paused {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 14px;
+  place-content: center;
+  justify-items: center;
+  border-radius: 16px;
+  background: rgba(43, 38, 29, 0.72);
+}
+
+.eggscape-paused b {
+  color: #fff8e8;
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.eggscape-paused div {
+  display: flex;
+  gap: 10px;
+}
+
+.eggscape-paused .primary,
+.result-actions .primary {
+  min-height: 46px;
+  padding: 10px 18px;
+  border: 2px solid #2f2a22;
+  border-radius: 14px;
+  background: #ffd43b;
+  box-shadow: 0 3px 0 #2f2a22;
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.eggscape-paused .primary:active,
+.result-actions .primary:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #2f2a22;
+}
+
+.result-actions .primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.eggscape-results {
+  padding: 8px 4px 4px;
+  text-align: center;
+}
+
+.eggscape-results h2 {
+  margin: 6px 0 16px;
+  font-size: 32px;
+  font-weight: 900;
+}
+
+.result-rows {
+  display: grid;
+  max-width: 380px;
+  gap: 8px;
+  margin: 0 auto 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.result-rows li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff;
+  border: 2px solid #f0e3c4;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.result-rows span { color: #786c59; }
+.result-rows b { color: #c96300; font-size: 16px; }
+
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* On a phone the 16:9 canvas is the scarce resource, so the card gives up its padding
+   and rounded frame to hand those pixels to the game. */
+@media (max-width: 600px) {
+  .eggscape-backdrop {
+    padding:
+      env(safe-area-inset-top)
+      env(safe-area-inset-right)
+      env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+  }
+
+  .eggscape-shell {
+    height: 100%;
+    max-height: none;
+    justify-content: center;
+    padding: 8px;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* Portrait gets a tall game box rather than a 16:9 sliver — the scene scales its
+     ground, hills and HUD to suit whatever shape it is handed. */
+  .eggscape-canvas {
+    max-height: calc(100dvh - 120px);
+    aspect-ratio: 3 / 4;
+  }
+
+  .eggscape-bar { margin-bottom: 8px; }
+  .eggscape-brand b { font-size: 15px; }
+  .world-grid { grid-template-columns: 1fr; }
+  .world-art { height: 88px; }
+  .eggscape-results h2 { font-size: 26px; }
+}
+
+/* Short viewport — a phone held sideways. Driving the box from height instead of width
+   keeps it a sane shape; capping it from a full-width box would leave a 3.7:1 letterbox
+   that Phaser can only fill a fraction of. Listed last so it wins when a small landscape
+   window matches the narrow-width rules too. */
+@media (max-height: 560px) {
+  .eggscape-canvas {
+    width: auto;
+    max-width: 100%;
+    height: calc(100dvh - 110px);
+    max-height: none;
+    margin-inline: auto;
+    aspect-ratio: 16 / 9;
+  }
+}
