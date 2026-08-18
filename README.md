@@ -71,6 +71,38 @@ The egg PNGs are 2000×2000 collection badges with the character's name on a pla
 lower third. `HERO_CROP` in `RunScene.js` crops that plate off the running sprite, and
 `HERO_SINK` buries the resulting flat edge just under the ground line.
 
+### Screen sizes
+
+`RunScene` has no fixed resolution. `pickGameSize()` in `createGame.js` measures the box the
+canvas has to live in and picks a logical size matching its shape, and the scene derives
+every dimension — ground line, hill band, hero position, HUD — from that in `layout()`. A
+800×450 canvas reproduces the numbers the game was originally tuned with, so desktop is
+where it always was.
+
+| Viewport | Logical | Canvas |
+|---|---|---|
+| Desktop 1100×900 | 800×450 | 848×477 |
+| Phone portrait 390×844 | 560×747 | 374×499 |
+| Phone landscape 844×390 | 560×315 | 498×280 |
+
+A narrower canvas shows less track ahead, so horizontal motion — speeds, spawn spacing,
+coin spacing — scales by `width / REFERENCE_WIDTH`, which keeps the player's reaction time
+in *seconds* the same on every screen. Object sizes deliberately do not scale; that is what
+makes the egg and hazards render larger on a phone.
+
+Because jump reach shrinks with the view while hazard widths do not, spawns are gated on a
+clearance check (`canClear()`) rather than tuned per device: a hazard only spawns if one
+jump at the current speed crosses it with 25% to spare. On a phone that produces a gentle
+ramp (fence from the start, stump ~score 4, shell ~16, doubled hazards ~50); on desktop
+everything is available immediately. Nothing unclearable can ever spawn at any size.
+
+Below 640 logical px the HUD switches to a compact single row with the power as a round
+button in the bottom-right, within thumb reach.
+
+**Known limitation:** the size is chosen when a run starts. Rotating the phone *between*
+runs works — the overlay builds a fresh Phaser game each time — but rotating *mid-run*
+leaves that run letterboxed until it ends, rather than killing the run to resize.
+
 ## Production QR design
 Replace `scan()` in `src/App.vue` with an API call such as POST `/api/qr/redeem`.
 The server should store unique hashed carton codes and reject repeated redemption. Never keep valid QR codes only in frontend JavaScript.

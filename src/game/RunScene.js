@@ -2,11 +2,11 @@ import Phaser from 'phaser'
 import { asset } from '../assets.js'
 import { worldEgg } from './worlds.js'
 
-export const GAME_WIDTH = 800
-export const GAME_HEIGHT = 450
+// The width the speeds and spacings below were tuned against. A narrower canvas shows
+// less track ahead, so horizontal motion is scaled by width / REFERENCE_WIDTH to keep the
+// player's reaction time — in seconds — the same on every screen.
+export const REFERENCE_WIDTH = 800
 
-// Ground surface the egg's feet rest on.
-const GROUND_Y = 372
 const GRAVITY = 2000
 const JUMP_VELOCITY = -720
 
@@ -15,6 +15,13 @@ const JUMP_VELOCITY = -720
 const AIR_TIME = (2 * Math.abs(JUMP_VELOCITY)) / GRAVITY
 const BASE_SPEED = 260
 const MAX_SPEED_BONUS = 160
+
+// A hazard only spawns if the current jump covers its span with this much room to spare.
+const CLEARANCE_MARGIN = 1.25
+
+// Below this logical width the wide HUD's panels collide, so it switches to one compact
+// row plus a round power button.
+const COMPACT_WIDTH = 640
 
 // A tap this long before landing still fires the jump, and a tap this long after
 // walking off an edge still counts as grounded. Both are what separate a tap-runner
@@ -62,6 +69,8 @@ export default class RunScene extends Phaser.Scene {
 
     this.reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
 
+    this.layout()
+
     this.phase = 'ready'
     this.score = 0
     this.coinsCollected = 0
@@ -70,8 +79,8 @@ export default class RunScene extends Phaser.Scene {
     this.maxCombo = 1
     this.lives = START_LIVES
     this.power = 0
-    this.speed = BASE_SPEED
-    this.distanceToSpawn = 420
+    this.speed = this.baseSpeed
+    this.distanceToSpawn = this.width * 0.525
     this.invulnerableUntil = 0
     this.lastGroundedAt = 0
     this.jumpQueuedAt = -Infinity
@@ -79,6 +88,38 @@ export default class RunScene extends Phaser.Scene {
     this.dashUntil = 0
     this.luckUntil = 0
     this.startedAt = 0
+  }
+
+  // Every dimension the scene uses, derived from whatever canvas createGame picked. The
+  // constants are chosen so a 800x450 canvas lands on the numbers the game was originally
+  // tuned with, which keeps desktop pixel-for-pixel where it was.
+  layout() {
+    const { width, height } = this.scale
+    this.width = width
+    this.height = height
+    this.compact = width < COMPACT_WIDTH
+
+    this.groundStrip = Phaser.Math.Clamp(Math.round(height * 0.17), 78, 150)
+    this.groundY = height - this.groundStrip          // 450 -> 372
+    this.hillBand = Phaser.Math.Clamp(Math.round(height * 0.36), 160, 300)
+    this.heroX = Math.round(width * 0.19)             // 800 -> 152
+
+    // Where the top HUD row ends. Clouds and the sun start below it so they never smudge
+    // the panels.
+    this.hudTop = this.compact ? 10 : 14
+    this.hudRowHeight = this.compact ? 56 : 52
+    this.hudBottom = this.hudTop + this.hudRowHeight + (this.compact ? 8 : 34)
+
+    // Horizontal motion scales with the view so the player always gets the same number of
+    // seconds to read a hazard, no matter how much track fits on screen.
+    this.motion = width / REFERENCE_WIDTH
+    this.baseSpeed = BASE_SPEED * this.motion
+    this.maxSpeedBonus = MAX_SPEED_BONUS * this.motion
+  }
+
+  // How far the egg travels horizontally during one jump, at the current speed.
+  get jumpReach() {
+    return AIR_TIME * this.speed
   }
 
   preload() {
@@ -91,15 +132,19 @@ export default class RunScene extends Phaser.Scene {
   }
 
   drawLoadingBar() {
+    const midX = this.width / 2
+    const midY = this.height / 2
+    const barWidth = Math.min(240, this.width - 80)
+
     const bar = this.add.graphics()
-    const label = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 34, 'Warming up the egg…', {
+    const label = this.add.text(midX, midY - 34, 'Warming up the egg…', {
       fontFamily: FONT, fontSize: '20px', fontStyle: '700', color: '#7a6a4a',
     }).setOrigin(0.5)
 
     this.load.on('progress', (value) => {
       bar.clear()
-      bar.fillStyle(0xe8dcc0, 1).fillRoundedRect(GAME_WIDTH / 2 - 120, GAME_HEIGHT / 2, 240, 14, 7)
-      bar.fillStyle(0xffc61a, 1).fillRoundedRect(GAME_WIDTH / 2 - 120, GAME_HEIGHT / 2, 240 * value, 14, 7)
+      bar.fillStyle(0xe8dcc0, 1).fillRoundedRect(midX - barWidth / 2, midY, barWidth, 14, 7)
+      bar.fillStyle(0xffc61a, 1).fillRoundedRect(midX - barWidth / 2, midY, barWidth * value, 14, 7)
     })
 
     this.load.once('complete', () => {
@@ -133,17 +178,17 @@ export default class RunScene extends Phaser.Scene {
   }
 
   makeSkyTexture() {
-    const key = `${this.world.id}-sky`
+    const key = `${this.world.id}-sky-${this.height}`
     if (this.textures.exists(key)) return key
 
     const hex = (value) => `#${value.toString(16).padStart(6, '0')}`
-    const canvas = this.textures.createCanvas(key, 8, GAME_HEIGHT)
+    const canvas = this.textures.createCanvas(key, 8, this.height)
     const ctx = canvas.getContext()
-    const gradient = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT)
+    const gradient = ctx.createLinearGradient(0, 0, 0, this.height)
     gradient.addColorStop(0, hex(this.world.palette.skyTop))
     gradient.addColorStop(1, hex(this.world.palette.skyBottom))
     ctx.fillStyle = gradient
-    ctx.fillRect(0, 0, 8, GAME_HEIGHT)
+    ctx.fillRect(0, 0, 8, this.height)
     canvas.refresh()
 
     return key
@@ -153,28 +198,33 @@ export default class RunScene extends Phaser.Scene {
     const p = this.world.palette
 
     // Sine-silhouette hills. The 200px period divides the 400px texture width, so the
-    // TileSprite repeats seamlessly.
+    // TileSprite repeats seamlessly. Height follows the canvas, so a tall portrait screen
+    // gets proportionally taller hills instead of a lonely strip above the ground.
+    const band = this.hillBand
     const hill = (key, color, amplitude, base) =>
-      this.makeTexture(key, 400, 160, (g) => {
-        const points = [{ x: 0, y: 160 }]
+      this.makeTexture(`${key}-${band}`, 400, band, (g) => {
+        const points = [{ x: 0, y: band }]
         for (let x = 0; x <= 400; x += 8) {
           points.push({ x, y: base - amplitude * Math.sin((x / 200) * Math.PI * 2) })
         }
-        points.push({ x: 400, y: 160 })
+        points.push({ x: 400, y: band })
         g.fillStyle(color, 1).fillPoints(points, true)
       })
 
     // Deliberately low silhouettes: tall hills sit right behind the runner and swallow
     // it. `base` is the sine midline in texture space, so a bigger base means a
     // shorter hill.
-    this.texHillFar = hill('hill-far', p.hillFar, 20, 96)
-    this.texHillNear = hill('hill-near', p.hillNear, 26, 124)
+    this.texHillFar = hill('hill-far', p.hillFar, band * 0.125, band * 0.6)
+    this.texHillNear = hill('hill-near', p.hillNear, band * 0.163, band * 0.775)
 
-    this.texGround = this.makeTexture('ground', 96, 90, (g) => {
-      g.fillStyle(p.ground, 1).fillRect(0, 0, 96, 90)
+    const strip = this.groundStrip
+    this.texGround = this.makeTexture(`ground-${strip}`, 96, strip, (g) => {
+      g.fillStyle(p.ground, 1).fillRect(0, 0, 96, strip)
       g.fillStyle(p.groundEdge, 1).fillRect(0, 0, 96, 12)
       g.fillStyle(p.ground, 0.55).fillRect(0, 12, 96, 4)
-      g.fillStyle(0x000000, 0.07).fillEllipse(24, 44, 30, 9).fillEllipse(70, 66, 24, 7)
+      g.fillStyle(0x000000, 0.07)
+        .fillEllipse(24, strip * 0.49, 30, 9)
+        .fillEllipse(70, strip * 0.73, 24, 7)
     })
 
     this.texCloud = this.makeTexture('cloud', 150, 60, (g) => {
@@ -234,16 +284,32 @@ export default class RunScene extends Phaser.Scene {
     // A canvas-texture gradient renders identically under both.
     this.add.image(0, 0, this.makeSkyTexture())
       .setOrigin(0, 0)
-      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
+      .setDisplaySize(this.width, this.height)
       .setDepth(-3)
 
-    this.add.circle(520, 116, 46, 0xffffff, 0.5).setDepth(-2)
-    this.add.circle(520, 116, 32, 0xfff3c4, 0.9).setDepth(-2)
+    // The open sky between the HUD and the hilltops. On a phone held sideways there is
+    // barely any, so the sun is sized to fit and dropped entirely rather than jammed
+    // half-behind the HUD.
+    const skyTop = this.hudBottom
+    const skyBand = this.groundY - this.hillBand - skyTop
+
+    if (skyBand > 60) {
+      const sunY = skyTop + skyBand * 0.4
+      const radius = Phaser.Math.Clamp(skyBand * 0.4, 24, 46)
+      this.add.circle(this.width * 0.65, sunY, radius, 0xffffff, 0.5).setDepth(-2)
+      this.add.circle(this.width * 0.65, sunY, radius * 0.7, 0xfff3c4, 0.9).setDepth(-2)
+    }
 
     // Kept clear of the HUD panels along the top edge, which they'd otherwise smudge.
     this.clouds = []
+    const cloudTop = skyTop + 12
+    const cloudBand = Math.max(30, (this.groundY - this.hillBand - cloudTop) * 0.7)
     for (let i = 0; i < 4; i++) {
-      const cloud = this.add.image(80 + i * 210, 96 + (i % 3) * 30, this.texCloud)
+      const cloud = this.add.image(
+        this.width * (0.1 + i * 0.26),
+        cloudTop + (i % 3) * (cloudBand / 3),
+        this.texCloud,
+      )
         .setScale(0.6 + (i % 3) * 0.22)
         .setAlpha(0.75)
         .setDepth(-2)
@@ -253,17 +319,21 @@ export default class RunScene extends Phaser.Scene {
     // Both hill bands are anchored so their *base* lands exactly on the ground line —
     // otherwise the silhouettes spill over the ground strip and the egg reads as
     // running waist-deep through the scenery.
-    this.hillFar = this.add.tileSprite(0, GROUND_Y - 160, GAME_WIDTH, 160, this.texHillFar)
+    const hillTop = this.groundY - this.hillBand
+    this.hillFar = this.add.tileSprite(0, hillTop, this.width, this.hillBand, this.texHillFar)
       .setOrigin(0, 0).setDepth(-1)
-    this.hillNear = this.add.tileSprite(0, GROUND_Y - 160, GAME_WIDTH, 160, this.texHillNear)
+    this.hillNear = this.add.tileSprite(0, hillTop, this.width, this.hillBand, this.texHillNear)
       .setOrigin(0, 0).setDepth(-1)
   }
 
   buildGround() {
-    this.groundTile = this.add.tileSprite(0, GROUND_Y, GAME_WIDTH, 90, this.texGround)
+    this.groundTile = this.add
+      .tileSprite(0, this.groundY, this.width, this.groundStrip, this.texGround)
       .setOrigin(0, 0).setDepth(1)
 
-    this.groundBody = this.add.rectangle(GAME_WIDTH / 2, GROUND_Y + 20, GAME_WIDTH, 40, 0x000000, 0)
+    this.groundBody = this.add.rectangle(
+      this.width / 2, this.groundY + 20, this.width, 40, 0x000000, 0,
+    )
     this.physics.add.existing(this.groundBody, true)
   }
 
@@ -289,14 +359,17 @@ export default class RunScene extends Phaser.Scene {
     // before the first scene update, and the squash tween needs a rest scale to return to.
     this.heroScale = scale
 
-    this.heroShadow = this.add.ellipse(150, GROUND_Y + 1, 70, 17, 0x000000, 0.2).setDepth(2)
+    this.heroShadow = this.add
+      .ellipse(this.heroX, this.groundY + 1, 70, 17, 0x000000, 0.2).setDepth(2)
 
-    this.hero = this.physics.add.sprite(150, GROUND_Y, this.heroKey, frameName)
+    this.hero = this.physics.add.sprite(this.heroX, this.groundY, this.heroKey, frameName)
     this.hero.setScale(scale).setOrigin(0.5, 1)
     this.hero.setDepth(5)
 
     const bodyW = frame.width * HERO_BODY.width
     const bodyH = frame.height * HERO_BODY.height
+    // Used by the spawn clearance check: the on-screen width of the egg's hitbox.
+    this.heroBodyWidth = bodyW * scale
     this.hero.body.setSize(bodyW, bodyH)
     this.hero.body.setOffset((frame.width - bodyW) / 2, frame.height - bodyH - HERO_SINK / scale)
     this.hero.body.setGravityY(GRAVITY)
@@ -322,54 +395,119 @@ export default class RunScene extends Phaser.Scene {
   // --------------------------------------------------------------------- HUD
 
   buildHud() {
-    const panel = (x, y, w, h) => this.add.graphics().setScrollFactor(0).setDepth(20)
-      .fillStyle(0x2b261d, 0.72).fillRoundedRect(x, y, w, h, 12)
-
-    panel(14, 14, 132, 52)
-    panel(156, 14, 108, 52)
-    panel(274, 14, 108, 52)
-
-    const label = (x, text) => this.add.text(x, 22, text, {
-      fontFamily: FONT, fontSize: '12px', fontStyle: '800', color: '#ffd43b',
-    }).setScrollFactor(0).setDepth(21)
-
-    const value = (x, text) => this.add.text(x, 36, text, {
-      fontFamily: FONT, fontSize: '22px', fontStyle: '900', color: '#fff8e8',
-    }).setScrollFactor(0).setDepth(21)
-
-    label(26, 'SCORE')
-    this.scoreText = value(26, '0')
-    label(168, 'BEST')
-    this.bestText = value(168, String(this.best))
-    label(286, 'COMBO')
-    this.comboText = value(286, '×1')
-
-    this.heartsText = this.add.text(GAME_WIDTH - 20, 78, '', {
-      fontFamily: FONT, fontSize: '20px',
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(21)
-
-    // Power button. Taps inside this rect fire the power instead of a jump.
-    this.powerRect = new Phaser.Geom.Rectangle(GAME_WIDTH - 208, 14, 194, 52)
+    this.hudPanels = this.add.graphics().setScrollFactor(0).setDepth(20)
     this.powerPanel = this.add.graphics().setScrollFactor(0).setDepth(20)
-    this.powerName = this.add.text(this.powerRect.x + 14, 22, this.world.power.name.toUpperCase(), {
-      fontFamily: FONT, fontSize: '13px', fontStyle: '900', color: '#fff8e8',
+
+    // `color` needs a real default: Phaser reads the key off the style object, so passing
+    // an explicit undefined leaves the fill unset and the text renders invisible.
+    const text = (x, y, size, color = '#fff8e8', weight = '900') => this.add.text(x, y, '', {
+      fontFamily: FONT, fontSize: `${size}px`, fontStyle: weight, color,
     }).setScrollFactor(0).setDepth(21)
-    this.powerHint = this.add.text(this.powerRect.x + 14, 42, this.world.power.blurb, {
-      fontFamily: FONT, fontSize: '11px', fontStyle: '700', color: '#ffd43b',
-    }).setScrollFactor(0).setDepth(21)
+
+    if (this.compact) this.buildCompactHud(text)
+    else this.buildWideHud(text)
 
     this.updateHud()
   }
 
+  buildWideHud(text) {
+    const top = this.hudTop
+    const h = this.hudRowHeight
+
+    this.hudPanels.fillStyle(0x2b261d, 0.72)
+      .fillRoundedRect(14, top, 132, h, 12)
+      .fillRoundedRect(156, top, 108, h, 12)
+      .fillRoundedRect(274, top, 108, h, 12)
+
+    const label = (x, value) => text(x, top + 8, 12, '#ffd43b', '800').setText(value)
+    const readout = (x) => text(x, top + 22, 22, '#fff8e8')
+
+    label(26, 'SCORE')
+    this.scoreText = readout(26)
+    label(168, 'BEST')
+    this.bestText = readout(168)
+    label(286, 'COMBO')
+    this.comboText = readout(286)
+
+    this.heartsText = text(this.width - 20, top + h + 12, 20, '#ffffff').setOrigin(1, 0)
+
+    // Taps inside this rect fire the power instead of a jump.
+    this.powerRect = new Phaser.Geom.Rectangle(this.width - 208, top, 194, h)
+    this.powerName = text(this.powerRect.x + 14, top + 8, 13, '#fff8e8')
+      .setText(this.world.power.name.toUpperCase())
+    this.powerHint = text(this.powerRect.x + 14, top + 28, 11, '#ffd43b', '700')
+  }
+
+  // One tight row of readouts, and the power moved to a round button in the bottom-right
+  // where a thumb already rests. Type is a size up from the wide layout: the HUD does not
+  // affect gameplay, so it can be scaled harder than the world to stay legible.
+  buildCompactHud(text) {
+    const top = this.hudTop
+    const h = this.hudRowHeight
+    const rowWidth = this.width - 20
+
+    this.hudPanels.fillStyle(0x2b261d, 0.72).fillRoundedRect(10, top, rowWidth, h, 12)
+
+    this.scoreText = text(20, top + 4, 24)
+    this.bestText = text(20, top + 36, 10, '#ffd43b', '800')
+    this.comboText = text(this.width * 0.5, top + 14, 22, '#ffd43b')
+    this.heartsText = text(this.width - 20, top + 16, 16).setOrigin(1, 0)
+
+    // Bottom-right, clear of the ground line so it never sits on top of a hazard the
+    // player is trying to read.
+    const radius = 42
+    this.powerCircle = new Phaser.Geom.Circle(
+      this.width - radius - 16,
+      this.groundY - radius - 28,
+      radius,
+    )
+    this.powerName = text(this.powerCircle.x, this.powerCircle.y - 14, 20)
+      .setOrigin(0.5)
+      .setText('⚡')
+    this.powerHint = text(this.powerCircle.x, this.powerCircle.y + 4, 11, '#ffd43b', '800')
+      .setOrigin(0.5)
+  }
+
+  // Rect in the wide layout, circle in the compact one — one call site for bindInput.
+  pointInPower(x, y) {
+    if (this.powerCircle) return Phaser.Geom.Circle.Contains(this.powerCircle, x, y)
+    return Phaser.Geom.Rectangle.Contains(this.powerRect, x, y)
+  }
+
   updateHud() {
+    const ready = this.power >= 100
+
     this.scoreText.setText(String(this.score))
-    this.bestText.setText(String(Math.max(this.best, this.score)))
+    this.bestText.setText(this.compact
+      ? `BEST ${Math.max(this.best, this.score)}`
+      : String(Math.max(this.best, this.score)))
     this.comboText.setText(`×${this.combo}`)
     this.heartsText.setText('❤️'.repeat(this.lives) + '🤎'.repeat(START_LIVES - this.lives))
 
-    const ready = this.power >= 100
-    const r = this.powerRect
     this.powerPanel.clear()
+
+    if (this.powerCircle) {
+      const c = this.powerCircle
+      this.powerPanel.fillStyle(ready ? 0x8a4bd4 : 0x2b261d, ready ? 0.95 : 0.78)
+        .fillCircle(c.x, c.y, c.radius)
+      // A light rim keeps the button readable against dark hills and night skies.
+      this.powerPanel.lineStyle(3, 0xfff8e8, 0.85).strokeCircle(c.x, c.y, c.radius)
+      // Charge reads as a ring filling clockwise from the top.
+      this.powerPanel.lineStyle(6, 0x000000, 0.3).strokeCircle(c.x, c.y, c.radius - 7)
+      if (this.power > 0) {
+        this.powerPanel.lineStyle(6, this.world.palette.accent, 1).beginPath()
+        this.powerPanel.arc(
+          c.x, c.y, c.radius - 7,
+          Phaser.Math.DegToRad(-90),
+          Phaser.Math.DegToRad(-90 + 360 * (this.power / 100)),
+        )
+        this.powerPanel.strokePath()
+      }
+      this.powerHint.setText(ready ? 'GO!' : `${Math.round(this.power)}%`)
+      return
+    }
+
+    const r = this.powerRect
     this.powerPanel.fillStyle(ready ? 0x8a4bd4 : 0x2b261d, ready ? 0.95 : 0.72)
     this.powerPanel.fillRoundedRect(r.x, r.y, r.width, r.height, 12)
     this.powerPanel.fillStyle(0x000000, 0.35).fillRoundedRect(r.x + 12, r.y + 38, r.width - 24, 7, 4)
@@ -379,34 +517,44 @@ export default class RunScene extends Phaser.Scene {
   }
 
   buildReadyBanner() {
-    this.readyGroup = this.add.container(GAME_WIDTH / 2, 190).setDepth(30)
+    // Sits between the HUD and the hills, and never wider than the canvas.
+    const plateWidth = Math.min(460, this.width - 40)
+    const half = plateWidth / 2
+    const restY = (this.hudBottom + (this.groundY - this.hillBand)) / 2
+
+    this.readyGroup = this.add.container(this.width / 2, restY).setDepth(30)
 
     const plate = this.add.graphics()
-      .fillStyle(0xfff8e8, 0.94).fillRoundedRect(-230, -58, 460, 116, 20)
-      .lineStyle(4, this.world.palette.banner, 1).strokeRoundedRect(-230, -58, 460, 116, 20)
+      .fillStyle(0xfff8e8, 0.94).fillRoundedRect(-half, -58, plateWidth, 116, 20)
+      .lineStyle(4, this.world.palette.banner, 1).strokeRoundedRect(-half, -58, plateWidth, 116, 20)
 
     const title = this.add.text(0, -28, this.world.title.toUpperCase(), {
       fontFamily: FONT, fontSize: '26px', fontStyle: '900', color: '#2b261d', align: 'center',
+      wordWrap: { width: plateWidth - 28 },
     }).setOrigin(0.5)
 
     const sub = this.add.text(0, 4, this.world.subtitle, {
       fontFamily: FONT, fontSize: '16px', fontStyle: '700', color: '#a2703a',
     }).setOrigin(0.5)
 
-    const cta = this.add.text(0, 34, 'TAP  ·  SPACE  ·  ▲   to jump', {
+    const cta = this.add.text(0, 34, this.compact ? 'TAP to jump' : 'TAP  ·  SPACE  ·  ▲   to jump', {
       fontFamily: FONT, fontSize: '15px', fontStyle: '800', color: '#2e7dd7',
     }).setOrigin(0.5)
 
     this.readyGroup.add([plate, title, sub, cta])
 
     if (!this.reduceMotion) {
-      this.tweens.add({ targets: this.readyGroup, y: 200, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+      this.tweens.add({
+        targets: this.readyGroup,
+        y: restY + 10,
+        duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      })
     }
   }
 
   bindInput() {
     this.input.on('pointerdown', (pointer) => {
-      if (Phaser.Geom.Rectangle.Contains(this.powerRect, pointer.x, pointer.y)) {
+      if (this.pointInPower(pointer.x, pointer.y)) {
         this.usePower()
         return
       }
@@ -468,13 +616,13 @@ export default class RunScene extends Phaser.Scene {
     if (this.phase === 'over') return
 
     if (this.phase === 'ready') {
-      this.scrollBackground(BASE_SPEED * 0.25, dt)
+      this.scrollBackground(this.baseSpeed * 0.25, dt)
       this.bobHero(time)
       return
     }
 
     const dashing = time < this.dashUntil
-    this.speed = BASE_SPEED + Math.min(MAX_SPEED_BONUS, this.score * 3)
+    this.speed = this.baseSpeed + Math.min(this.maxSpeedBonus, this.score * 3 * this.motion)
     const speed = this.speed * (dashing ? 1.5 : 1)
 
     this.scrollBackground(speed, dt)
@@ -501,7 +649,7 @@ export default class RunScene extends Phaser.Scene {
 
     for (const cloud of this.clouds) {
       cloud.x -= speed * dt * 0.08
-      if (cloud.x < -100) cloud.x = GAME_WIDTH + 100
+      if (cloud.x < -100) cloud.x = this.width + 100
     }
   }
 
@@ -516,14 +664,14 @@ export default class RunScene extends Phaser.Scene {
       this.hero.body.setVelocityY(JUMP_VELOCITY)
       this.jumpQueuedAt = -Infinity
       this.lastGroundedAt = -Infinity
-      this.spawnDust(this.hero.x - 6, GROUND_Y, 3)
+      this.spawnDust(this.hero.x - 6, this.groundY, 3)
     }
 
     this.wasGrounded = grounded
   }
 
   onLand() {
-    this.spawnDust(this.hero.x - 6, GROUND_Y, 4)
+    this.spawnDust(this.hero.x - 6, this.groundY, 4)
     if (this.reduceMotion) return
     this.hero.setScale(this.hero.scaleX * 1.12, this.hero.scaleY * 0.88)
     this.tweens.add({
@@ -544,7 +692,7 @@ export default class RunScene extends Phaser.Scene {
     }
 
     // Shadow shrinks with height, which is most of what sells the jump arc.
-    const height = Phaser.Math.Clamp((GROUND_Y - this.hero.y) / 170, 0, 1)
+    const height = Phaser.Math.Clamp((this.groundY - this.hero.y) / 170, 0, 1)
     this.heroShadow.setScale(1 - height * 0.55).setAlpha(0.22 * (1 - height * 0.7))
 
     this.shieldRing.setPosition(this.hero.x, this.hero.y - HERO_HEIGHT / 2)
@@ -552,23 +700,44 @@ export default class RunScene extends Phaser.Scene {
 
   // ------------------------------------------------------------------ spawns
 
+  // Whether one jump at the current speed crosses a cluster of this width with room to
+  // spare. The egg's own body has to clear the hazard too, so it counts toward the span.
+  canClear(clusterWidth) {
+    return (clusterWidth + this.heroBodyWidth) * CLEARANCE_MARGIN <= this.jumpReach
+  }
+
   spawnCluster(time) {
     const lucky = time < this.luckUntil
-    const speed = this.speed
-    const reach = AIR_TIME * speed
+    const reach = this.jumpReach
 
     if (lucky) {
       this.spawnBoost()
     } else {
-      const roll = Math.random()
-      if (roll < 0.34) this.spawnHazard(this.texStump, 48, 56)
-      else if (roll < 0.68) this.spawnHazard(this.texShell, 62, 40)
-      else this.spawnHazard(this.texFence, 34, 68)
+      // Widest hazard the current jump can actually clear. On a narrow phone canvas the
+      // jump covers fewer pixels, so the opening speed offers only the slim fence and the
+      // chunkier hazards unlock as the run speeds up — rather than spawning something
+      // impossible. On desktop everything passes from the first spawn.
+      const options = [
+        { texture: this.texFence, width: 34, height: 68 },
+        { texture: this.texStump, width: 48, height: 56 },
+        { texture: this.texShell, width: 62, height: 40 },
+      ].filter((option) => this.canClear(option.width))
 
-      // A second hazard tucked just behind the first — still one jump, but it asks
-      // for a committed one. Only once the player has some speed under them.
-      if (this.score > 12 && Math.random() < 0.28) {
-        this.spawnHazard(this.texShell, 62, 40, 70)
+      const pick = options.length
+        ? options[Math.floor(Math.random() * options.length)]
+        : null
+
+      if (pick) {
+        this.spawnHazard(pick.texture, pick.width, pick.height)
+
+        // A second hazard tucked just behind the first — still one jump, but it asks
+        // for a committed one. Only when the pair genuinely fits inside one arc, which
+        // means it turns up once the run has some speed behind it (score ~19 on desktop).
+        // 60 rather than 70 so the pair stays reachable at a phone's lower top speed.
+        const offset = 60 * this.motion
+        if (this.score > 12 && Math.random() < 0.28 && this.canClear(offset + 62)) {
+          this.spawnHazard(this.texShell, 62, 40, offset)
+        }
       }
     }
 
@@ -576,11 +745,14 @@ export default class RunScene extends Phaser.Scene {
 
     // Never tighter than the jump can cover: reach is the full arc, and the cluster
     // needs clearing plus landing room before the next one arrives.
-    this.distanceToSpawn = Math.max(300, reach * 1.15) + Math.random() * 180
+    this.distanceToSpawn = Math.max(300 * this.motion, reach * 1.15)
+      + Math.random() * 180 * this.motion
   }
 
   spawnHazard(texture, width, height, offsetX = 0) {
-    const hazard = this.hazards.create(GAME_WIDTH + 60 + offsetX, GROUND_Y - height / 2 + 4, texture)
+    const hazard = this.hazards.create(
+      this.width + 60 + offsetX, this.groundY - height / 2 + 4, texture,
+    )
     hazard.setDepth(4)
     hazard.body.setSize(width * 0.78, height * 0.8)
     hazard.setData('scored', false)
@@ -590,7 +762,7 @@ export default class RunScene extends Phaser.Scene {
   }
 
   spawnBoost() {
-    const pad = this.hazards.create(GAME_WIDTH + 60, GROUND_Y - 13, this.texBoost)
+    const pad = this.hazards.create(this.width + 60, this.groundY - 13, this.texBoost)
     pad.setDepth(4)
     pad.body.setSize(52, 22)
     pad.setData('scored', false)
@@ -601,13 +773,14 @@ export default class RunScene extends Phaser.Scene {
 
   spawnCoinArc() {
     const count = 3 + Math.floor(Math.random() * 3)
-    const peak = GROUND_Y - 150 - Math.random() * 40
-    const startX = GAME_WIDTH + 90
+    const peak = this.groundY - 150 - Math.random() * 40
+    const startX = this.width + 90
+    const step = 46 * this.motion
 
     for (let i = 0; i < count; i++) {
       const t = count === 1 ? 0.5 : i / (count - 1)
-      const y = GROUND_Y - 60 - Math.sin(t * Math.PI) * (GROUND_Y - 60 - peak)
-      const coin = this.coins.create(startX + i * 46, y, this.texCoin)
+      const y = this.groundY - 60 - Math.sin(t * Math.PI) * (this.groundY - 60 - peak)
+      const coin = this.coins.create(startX + i * step, y, this.texCoin)
       coin.setDepth(4)
       coin.body.setCircle(12, 1, 4)
       if (!this.reduceMotion) {
@@ -682,7 +855,7 @@ export default class RunScene extends Phaser.Scene {
 
   addScore(amount, x, text) {
     this.score += amount
-    if (text) this.showFloater(x, GROUND_Y - 170, text, '#ffffff')
+    if (text) this.showFloater(x, this.groundY - 170, text, '#ffffff')
     this.updateHud()
   }
 
@@ -718,7 +891,7 @@ export default class RunScene extends Phaser.Scene {
     this.hazards.setVelocityX(0)
     this.coins.setVelocityX(0)
 
-    this.add.text(GAME_WIDTH / 2, 190, 'RUN OVER', {
+    this.add.text(this.width / 2, this.height * 0.42, 'RUN OVER', {
       fontFamily: FONT, fontSize: '46px', fontStyle: '900', color: '#fff8e8',
       stroke: '#2b261d', strokeThickness: 8,
     }).setOrigin(0.5).setDepth(30)

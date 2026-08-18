@@ -1667,18 +1667,30 @@ footer {
   position: relative;
 }
 
+/* An explicit aspect gives the box a definite height for Phaser's FIT to work against,
+   and createGame reads the same box back to choose a logical size that matches it — so
+   the game fills the frame instead of sitting in a letterboxed strip. max-height keeps a
+   short landscape window from pushing the card off screen; when it bites, the box just
+   gets relatively wider and the scene is built wider to suit. */
 .eggscape-canvas {
-  overflow: hidden;
-  border: 2px solid #2f2a22;
-  border-radius: 16px;
-  background: #fff8e8;
+  display: grid;
+  width: 100%;
+  max-height: calc(100dvh - 150px);
+  aspect-ratio: 16 / 9;
+  place-items: center;
   line-height: 0;
 }
 
+/* Sized by Phaser's scale manager — the canvas must not be forced to the container's
+   width, or it can only ever be as tall as a 16:9 slice of it. The frame lives on the
+   canvas rather than the container so no empty gutter shows around a letterboxed game. */
 .eggscape-canvas canvas {
   display: block;
-  width: 100% !important;
-  height: auto !important;
+  max-width: 100%;
+  max-height: 100%;
+  border: 2px solid #2f2a22;
+  border-radius: 16px;
+  background: #fff8e8;
   touch-action: manipulation;
 }
 
@@ -1800,9 +1812,31 @@ footer {
     box-shadow: none;
   }
 
+  /* Portrait gets a tall game box rather than a 16:9 sliver — the scene scales its
+     ground, hills and HUD to suit whatever shape it is handed. */
+  .eggscape-canvas {
+    max-height: calc(100dvh - 120px);
+    aspect-ratio: 3 / 4;
+  }
+
   .eggscape-bar { margin-bottom: 8px; }
   .eggscape-brand b { font-size: 15px; }
   .world-grid { grid-template-columns: 1fr; }
   .world-art { height: 88px; }
   .eggscape-results h2 { font-size: 26px; }
+}
+
+/* Short viewport — a phone held sideways. Driving the box from height instead of width
+   keeps it a sane shape; capping it from a full-width box would leave a 3.7:1 letterbox
+   that Phaser can only fill a fraction of. Listed last so it wins when a small landscape
+   window matches the narrow-width rules too. */
+@media (max-height: 560px) {
+  .eggscape-canvas {
+    width: auto;
+    max-width: 100%;
+    height: calc(100dvh - 110px);
+    max-height: none;
+    margin-inline: auto;
+    aspect-ratio: 16 / 9;
+  }
 }
