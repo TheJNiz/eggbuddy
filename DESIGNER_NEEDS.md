@@ -15,9 +15,6 @@ Paths are relative to `public/`.
 
 | Path | Use |
 |---|---|
-| `hazards/shine/sunflower.png` | Shine EGGnyway — sunflower stalk hazard |
-| `hazards/shine/stump.png` | Shine EGGnyway — ground stump hazard |
-| `hazards/shine/shell.png` | Shine EGGnyway — cracked-shell hazard |
 | `hazards/sprint/hurdle.png` | Stadium Sprint — track hurdle |
 | `hazards/sprint/cone.png` | Stadium Sprint — training cone |
 | `hazards/sprint/trophy.png` | Stadium Sprint — trophy block hazard |

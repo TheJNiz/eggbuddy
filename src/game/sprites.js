@@ -3,9 +3,9 @@
 // Collection badges in public/eggs are already the runner hero (cropped) and
 // the farm collection. The farm chicken uses public/chicken-walk.png.
 //
-// Hazard / pickup PNGs have not been delivered. Each world lists the slots a
+// Shine hop pads are on disk. Remaining hazard / pickup PNGs are listed below. Each world lists the slots a
 // designer should fill. `file: null` means RunScene generates a palette
-// fallback. Point `file` at a public/ path (e.g. 'hazards/shine/sunflower.png')
+// fallback. Point `file` at a public/ path (e.g. 'platforms/shine/sunflower-short.png')
 // once the PNG exists — preload will load it and spawn will use it.
 
 export const DEFAULT_HAZARDS = [
@@ -16,9 +16,6 @@ export const DEFAULT_HAZARDS = [
 
 // Designer needs — isolated sprites, not the full-bleed -character.png scenes.
 export const DESIGNER_NEEDS = [
-  { path: 'hazards/shine/sunflower.png', use: 'Shine EGGnyway — sunflower stalk hazard' },
-  { path: 'hazards/shine/stump.png', use: 'Shine EGGnyway — ground stump hazard' },
-  { path: 'hazards/shine/shell.png', use: 'Shine EGGnyway — cracked-shell hazard' },
   { path: 'hazards/sprint/hurdle.png', use: 'Stadium Sprint — track hurdle' },
   { path: 'hazards/sprint/cone.png', use: 'Stadium Sprint — training cone' },
   { path: 'hazards/sprint/trophy.png', use: 'Stadium Sprint — trophy block hazard' },
@@ -34,9 +31,14 @@ export function artKey(worldId, id) {
 }
 
 export function worldHazards(world) {
+  if (world.mode === 'hop') return []
   return world.hazards?.length ? world.hazards : DEFAULT_HAZARDS
 }
 
 export function worldPickup(world, slot) {
   return world.sprites?.[slot] || null
+}
+
+export function worldPlatforms(world) {
+  return world.platforms?.length ? world.platforms : []
 }

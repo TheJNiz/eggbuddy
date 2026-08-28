@@ -33,22 +33,27 @@ refunded on landing, at 75% of the ground jump's strength so it extends a jump r
 doubling its height (measured: ~123px of lift becomes ~174px). The egg flips as it fires,
 so the second jump is unmistakable.
 
-The double jump is a safety net, never a requirement — hazard spawning still guarantees
+The double jump is a safety net, never a requirement — spawning still guarantees
 everything is clearable in a *single* jump (see below). It does have a cost: a full double
 jump keeps the egg airborne ~1.08s against a spawn gap of ~0.85–1.0s, so spending it can
-carry you into the next hazard.
+carry you into the next hazard or pad.
 
 Three launch worlds, matching the deck's Phase 1 shortlist:
 
 | World | Buddy | Signature power |
 |---|---|---|
-| Shine EGGnyway | Sunny Maxx | Sunshine Shield — absorbs one mistake |
+| Shine EGGnyway | Sunny Maxx | Sunshine Shield — saves one fall |
 | Move First, Magic Follow | Eggxercise | First Move Dash — 3s untouchable burst |
 | Come On Lah | Walao Egg | Lah! Luck — turns hazards into boost pads |
 
-Scoring is +1 per hazard cleared, +2 for a tight "perfect" clear, and coins pay out
-×combo (combo caps at ×8, resets on a hit). Three hearts per run. The power meter
-fills on coin pickups; tap the HUD power button or press `P` to spend it.
+Each world has a `mode`. **Shine is hop**: sunflowers are one-way landing pads at three
+heights (head collider only; the stem is visual). After a short opening ledge there is no
+ground — miss a pad and the run is over. Sunshine Shield saves one fall. Stadium and
+Kampung stay the ground runner (three hearts, jump the hazards).
+
+Scoring is +1 per hazard cleared or pad landed, +2 for a tight "perfect", and coins pay out
+×combo (combo caps at ×8, resets on a hit). The power meter fills on coin pickups; tap the
+HUD power button or press `P` to spend it.
 
 ### How it plugs into the pet
 
@@ -64,14 +69,15 @@ chicken fed rather than a way around it:
 
 ### Code layout
 
-- `src/game/worlds.js` — the three world definitions (palette, hazards, power). Everything
-  world-specific is data, so worlds 4–10 are new records, not new scene code. Each world is
-  `locked: true` and needs the matching collectible egg (Shine starts unlocked because a
-  fresh save already owns Sunny Maxx). Hazard slots list a `file` path; `null` means the
-  palette-generated fallback until designer art lands.
+- `src/game/worlds.js` — the three world definitions (mode, palette, hazards or hop pads,
+  power). Everything world-specific is data, so worlds 4–10 are new records, not new scene
+  code. Each world is `locked: true` and needs the matching collectible egg (Shine starts
+  unlocked because a fresh save already owns Sunny Maxx). Sprite slots list a `file` path;
+  `null` means the palette-generated fallback until designer art lands.
 - `src/game/sprites.js` — art-hook helpers and the designer-needs list for missing sprites.
-- `src/game/RunScene.js` — the runner itself. It loads a world sprite when `file` is set and
-  otherwise generates that piece from the world palette.
+- `src/game/RunScene.js` — the runner itself. `world.mode` selects hop vs run inside one
+  scene. It loads a world sprite when `file` is set and otherwise generates that piece from
+  the world palette.
 - `src/game/createGame.js` — the Phaser factory, and the lazy-import boundary.
 - `src/components/EggscapeOverlay.vue` — select / play / results screens; owns the Phaser
   lifecycle and world locks. `src/App.vue` owns all the economy math.
@@ -102,11 +108,13 @@ coin spacing — scales by `width / REFERENCE_WIDTH`, which keeps the player's r
 in *seconds* the same on every screen. Object sizes deliberately do not scale; that is what
 makes the egg and hazards render larger on a phone.
 
-Because jump reach shrinks with the view while hazard widths do not, spawns are gated on a
-clearance check (`canClear()`) rather than tuned per device: a hazard only spawns if one
-jump at the current speed crosses it with 25% to spare. On a phone that produces a gentle
-ramp (fence from the start, stump ~score 4, shell ~16, doubled hazards ~50); on desktop
-everything is available immediately. Nothing unclearable can ever spawn at any size.
+Because jump reach shrinks with the view while object widths do not, spawns are gated on a
+clearance check rather than tuned per device. Run worlds use `canClear()`: a hazard only
+spawns if one jump at the current speed crosses it with 25% to spare. Hop pads use the same
+single-jump reach (`flightTime` + `hopGap`) so a fair gap never needs the double jump. On a
+phone the ground runner ramps gently (fence from the start, stump ~score 4, shell ~16,
+doubled hazards ~50); on desktop everything is available immediately. Nothing unclearable
+can ever spawn at any size.
 
 Below 640 logical px the HUD switches to a compact single row with the power as a round
 button in the bottom-right, within thumb reach.

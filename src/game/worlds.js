@@ -3,6 +3,8 @@ import { eggs } from '../eggs.js'
 // The deck's Phase 1 shortlist: Shine EGGnyway • Move First • Come On Lah.
 // Everything world-specific is data so RunScene stays generic — adding worlds 4-10
 // later is a matter of appending records, not touching the scene.
+// `mode: 'run'` is the ground runner (Stadium, Kampung). `mode: 'hop'` is Shine:
+// one-way sunflower heads, no floor after the opening ledge.
 //
 // `locked: true` restores the deck's collection gating: the select screen requires
 // the matching egg in the player's collection. The farm starts with Sunny Maxx
@@ -11,21 +13,48 @@ export const worlds = [
   {
     id: 'shine',
     eggId: 0,
+    // Hop: one-way sunflower pads, no ground after the opening ledge.
+    // Stadium (`sprint`) and Kampung stay `run`.
+    mode: 'hop',
     title: 'Shine EGGnyway',
     subtitle: 'Sunflower Bounce',
-    blurb: 'A bright opening run that teaches rhythm and timing.',
+    blurb: 'Hop sunflower heads. Miss a pad and the run is over.',
     locked: true,
-    power: { key: 'shield', name: 'Sunshine Shield', blurb: 'Absorbs 1 mistake' },
+    power: { key: 'shield', name: 'Sunshine Shield', blurb: 'Saves 1 fall' },
     collectible: 'Sun Drop',
-    // TODO(designer): public/hazards/shine/{sunflower,stump,shell}.png — see DESIGNER_NEEDS.
-    hazards: [
-      { id: 'sunflower', fallback: 'fence', width: 34, height: 68, file: null },
-      { id: 'stump', fallback: 'stump', width: 48, height: 56, file: null },
-      { id: 'shell', fallback: 'shell', width: 62, height: 40, file: null },
+    // PNGs on disk. Display size keeps aspect. `head` is the landable seed-disc AABB,
+    // normalized to the sprite top-left (stem is visual only).
+    platforms: [
+      {
+        id: 'sunflower-short',
+        band: 'short',
+        width: 88,
+        height: 50,
+        file: 'platforms/shine/sunflower-short.png',
+        head: { x: 0.18, y: 0.05, w: 0.64, h: 0.17 },
+      },
+      {
+        id: 'sunflower-mid',
+        band: 'mid',
+        width: 92,
+        height: 89,
+        file: 'platforms/shine/sunflower-mid.png',
+        head: { x: 0.18, y: 0.04, w: 0.64, h: 0.14 },
+      },
+      {
+        id: 'sunflower-tall',
+        band: 'tall',
+        width: 96,
+        height: 116,
+        file: 'platforms/shine/sunflower-tall.png',
+        head: { x: 0.14, y: 0.02, w: 0.72, h: 0.14 },
+      },
     ],
+    hazards: [],
     sprites: {
       boost: null, // TODO(designer): public/pickups/boost.png
-      coin: null,  // TODO(designer): public/pickups/golden-egg.png
+      coin: 'platforms/shine/sundrop.png',
+      sundrop: 'platforms/shine/sundrop.png',
     },
     palette: {
       skyTop: 0x8ed6ff,
@@ -43,6 +72,7 @@ export const worlds = [
   {
     id: 'sprint',
     eggId: 4,
+    mode: 'run',
     title: 'Move First, Magic Follow',
     subtitle: 'Stadium Sprint',
     blurb: 'Fast reactions build a streak while trophies reward perfect timing.',
@@ -75,6 +105,7 @@ export const worlds = [
   {
     id: 'kampung',
     eggId: 3,
+    mode: 'run',
     title: 'Come On Lah',
     subtitle: 'Kampung Waddle',
     blurb: 'Dodge bananas, laundry and village surprises.',
@@ -110,6 +141,10 @@ export function worldById(id) {
   return worlds.find((world) => world.id === id) || worlds[0]
 }
 
+export function worldMode(world) {
+  return world.mode || 'run'
+}
+
 export function worldEgg(world) {
   return eggs[world.eggId]
 }
@@ -117,4 +152,3 @@ export function worldEgg(world) {
 export function worldIsLocked(world, collection) {
   return !!world.locked && !collection.includes(world.eggId)
 }
-
