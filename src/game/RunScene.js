@@ -58,10 +58,8 @@ const INVULNERABLE_MS = 1200
 const MAX_COMBO = 8
 const START_LIVES = 3
 
-// Hop pads: shared one-way collider in source PNG pixels, scaled with the sprite.
-// Stem is visual, so falling past a pad without landing on the pad is a miss.
-const DEFAULT_PAD_COLLIDER = { x: 8, y: 8, w: 496, h: 40 }
-const PAD_SRC_WIDTH = 512
+// Hop pads: only the orange seed disc is solid. Stem / leaves / petals are visual.
+// Per-pad AABB lives on world.platforms[].head (normalized, origin top-left).
 
 const POWER_PER_COIN = 6
 const POWER_PER_PERFECT = 2
@@ -145,10 +143,9 @@ export default class RunScene extends Phaser.Scene {
         tall: shortTop - rise,
       }
       const pads = worldPlatforms(this.world)
-      const collider = this.world.padCollider || DEFAULT_PAD_COLLIDER
       this.hopHeadWidth = Math.max(
         48,
-        ...pads.map((def) => def.width * (collider.w / (def.src?.w || PAD_SRC_WIDTH))),
+        ...pads.map((def) => this.headDisplay(def).width),
       )
     }
   }
@@ -524,7 +521,7 @@ export default class RunScene extends Phaser.Scene {
     this.hero.body.setSize(bodyW, bodyH)
     this.hero.body.setOffset((frame.width - bodyW) / 2, frame.height - bodyH - HERO_SINK / scale)
     this.hero.body.setGravityY(GRAVITY)
-    if (this.isHop) this.hero.body.setMaxVelocityX(0)
+    if (this.isHop) this.hero.body.setMaxVelocity(0, 1100)
 
     // Stops a double jump carrying the egg off the top of the canvas. Expressed against
     // the body, whose top sits well below the sprite's — the art has rays and hair above
@@ -842,7 +839,8 @@ export default class RunScene extends Phaser.Scene {
   scrollBackground(speed, dt) {
     this.hillFar.tilePositionX += speed * dt * 0.18
     this.hillNear.tilePositionX += speed * dt * 0.42
-    this.groundTile.tilePositionX += speed * dt
+    // Hop ledge translates as a whole; extra tile-scroll would treadmill it.
+    if (!this.isHop) this.groundTile.tilePositionX += speed * dt
 
     for (const cloud of this.clouds) {
       cloud.x -= speed * dt * 0.08
@@ -1233,20 +1231,19 @@ export default class RunScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- hop mode
 
-  // Shared pad collider is source-PNG pixels. Scale it onto display size (and
-  // onto whatever texture frame is actually loaded).
-  padCollider() {
-    return this.world.padCollider || DEFAULT_PAD_COLLIDER
+  // Designer AABB is normalized to the sprite (origin top-left). Arcade wants
+  // source pixels; Phaser then scales by displaySize / frame.
+  headNorm(def) {
+    const h = def.head || { x: 0.18, y: 0.05, w: 0.64, h: 0.17 }
+    if (h.w <= 1 && h.h <= 1) return h
+    const srcW = def.src?.w || 1
+    const srcH = def.src?.h || 1
+    return { x: h.x / srcW, y: h.y / srcH, w: h.w / srcW, h: h.h / srcH }
   }
 
-  padSrc(def) {
-    return def.src || { w: PAD_SRC_WIDTH, h: def.height }
-  }
-
-  padLandDisplay(def) {
-    const c = this.padCollider()
-    const src = this.padSrc(def)
-    return { width: def.width * (c.w / src.w), height: def.height * (c.h / src.h) }
+  headDisplay(def) {
+    const h = this.headNorm(def)
+    return { width: def.width * h.w, height: def.height * h.h }
   }
 
   // Time for a single ground jump to land `heightUp` pixels higher (negative = lower).
@@ -1264,7 +1261,7 @@ export default class RunScene extends Phaser.Scene {
   hopGap(heightUp, def) {
     const t = this.flightTime(heightUp) ?? AIR_TIME * 0.5
     const reach = this.speed * t
-    const headW = this.padLandDisplay(def).width
+    const headW = this.headDisplay(def).width
     const minGap = headW + 36 * this.motion
     // Stay under one-jump reach (double jump is a safety net, not the plan).
     const maxGap = reach / CLEARANCE_MARGIN
@@ -1278,7 +1275,7 @@ export default class RunScene extends Phaser.Scene {
     const reachable = defs.filter((def) => {
       const t = this.flightTime(fromY - this.hopBands[def.band])
       if (t == null) return false
-      const minClear = this.padLandDisplay(def).width + 36 * this.motion
+      const minClear = this.headDisplay(def).width + 36 * this.motion
       return this.speed * t >= minClear
     })
     const pool = reachable.length ? reachable : defs.filter((item) => item.band === 'short')
@@ -1305,24 +1302,19 @@ export default class RunScene extends Phaser.Scene {
     const x = fromX + this.hopGap(fromY - landingY, def)
 
     const art = this.resolveArt(def.id, def.id, def.width, def.height)
-    const collider = this.padCollider()
-    const src = this.padSrc(def)
-    const displayW = def.width
-    const displayH = Math.round(def.width * src.h / src.w)
-    // Origin at sprite top; shift so the pad collider's top sits on the band.
-    const spriteY = landingY - displayH * (collider.y / src.h)
-    const pad = this.platforms.create(x, spriteY, art.texture)
+    const pad = this.platforms.create(x, landingY, art.texture)
     pad.setDepth(4)
     pad.setOrigin(0.5, 0)
+    let displayW = def.width
+    let displayH = def.height
+    if (pad.frame.width > 0) {
+      displayH = Math.round(displayW * pad.frame.height / pad.frame.width)
+    }
     pad.setDisplaySize(displayW, displayH)
 
-    // Arcade body is source pixels; map the shared 512-space collider onto this frame
-    // so a loaded PNG and the palette fallback land the same on-screen pad.
-    pad.body.setSize(pad.frame.width * (collider.w / src.w), pad.frame.height * (collider.h / src.h))
-    pad.body.setOffset(
-      pad.frame.width * (collider.x / src.w),
-      pad.frame.height * (collider.y / src.h),
-    )
+    const head = this.headNorm(def)
+    pad.body.setSize(head.w * pad.frame.width, head.h * pad.frame.height)
+    pad.body.setOffset(head.x * pad.frame.width, head.y * pad.frame.height)
     pad.body.setImmovable(true)
     pad.body.setAllowGravity(false)
     pad.body.checkCollision.up = true
@@ -1330,12 +1322,12 @@ export default class RunScene extends Phaser.Scene {
     pad.body.checkCollision.left = false
     pad.body.checkCollision.right = false
 
-    const land = this.padLandDisplay({ ...def, width: displayW, height: displayH })
+    const headPx = { width: displayW * head.w, height: displayH * head.h }
     pad.setData('scored', false)
     pad.setData('band', def.band)
     pad.setData('landingY', landingY)
-    pad.setData('headWidth', land.width)
-    pad.setData('headHeight', land.height)
+    pad.setData('headWidth', headPx.width)
+    pad.setData('headHeight', headPx.height)
 
     if (prev && Math.random() < 0.78) this.spawnHopCoins(prev, pad)
     if (Math.random() < 0.34) this.spawnSundrop(pad, def, displayH)
@@ -1346,9 +1338,8 @@ export default class RunScene extends Phaser.Scene {
     const w = 30
     const h = 36
     const art = this.resolveArt('sundrop', 'coin', w, h)
-    const collider = this.padCollider()
-    const src = this.padSrc(def)
-    const sitY = pad.y + displayH * (collider.y / src.h) - 4
+    const head = this.headNorm(def)
+    const sitY = pad.y + head.y * displayH - 4
     const drop = this.coins.create(pad.x, sitY - h / 2, art.texture)
     drop.setDepth(5)
     drop.setDisplaySize(art.width, art.height)
@@ -1392,9 +1383,9 @@ export default class RunScene extends Phaser.Scene {
 
   checkHopFall() {
     if (this.phase !== 'running') return
-    // Origin is the feet. Off the bottom of the canvas is an instant lose
-    // (not the 3-hit ground-runner clock).
-    if (this.hero.y < this.height + 8) return
+    // Origin is the feet. Dropping through the old ground line is a miss —
+    // instant run over, not the 3-hit ground-runner clock.
+    if (this.hero.y < this.groundY + 40) return
     if (this.shieldActive) {
       this.saveHopFall()
       return
