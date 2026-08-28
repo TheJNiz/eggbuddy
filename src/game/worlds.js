@@ -22,33 +22,37 @@ export const worlds = [
     locked: true,
     power: { key: 'shield', name: 'Sunshine Shield', blurb: 'Saves 1 fall' },
     collectible: 'Sun Drop',
-    // PNGs on disk. Display 80–96px; height follows PNG aspect.
-    // `head` is the landable orange seed disc, normalized to the sprite top-left.
-    // Stem / leaves / petals are not solid.
+    // Aligned 512-wide PNGs. Display ~80–96px; height follows PNG aspect
+    // (short 296/512, mid 498/512, tall 619/512). Head (PNG px from top-left)
+    // is visual only. All three share one one-way pad collider; the stem is not solid.
+    padCollider: { x: 8, y: 8, w: 496, h: 40 },
     platforms: [
       {
         id: 'sunflower-short',
         band: 'short',
         width: 88,
         height: 51,
+        src: { w: 512, h: 296 },
         file: 'platforms/shine/sunflower-short.png',
-        head: { x: 0.18, y: 0.05, w: 0.64, h: 0.17 },
+        head: { x: 8, y: 13, w: 494, h: 200 },
       },
       {
         id: 'sunflower-mid',
         band: 'mid',
         width: 92,
         height: 89,
+        src: { w: 512, h: 498 },
         file: 'platforms/shine/sunflower-mid.png',
-        head: { x: 0.18, y: 0.04, w: 0.64, h: 0.14 },
+        head: { x: 8, y: 10, w: 495, h: 175 },
       },
       {
         id: 'sunflower-tall',
         band: 'tall',
         width: 96,
         height: 116,
+        src: { w: 512, h: 619 },
         file: 'platforms/shine/sunflower-tall.png',
-        head: { x: 0.14, y: 0.02, w: 0.72, h: 0.14 },
+        head: { x: 8, y: 8, w: 496, h: 168 },
       },
     ],
     hazards: [],
