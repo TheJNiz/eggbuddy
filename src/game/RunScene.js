@@ -1302,17 +1302,20 @@ export default class RunScene extends Phaser.Scene {
     const x = fromX + this.hopGap(fromY - landingY, def)
 
     const art = this.resolveArt(def.id, def.id, def.width, def.height)
-    const pad = this.platforms.create(x, landingY, art.texture)
-    pad.setDepth(4)
-    pad.setOrigin(0.5, 0)
+    const head = this.headNorm(def)
     let displayW = def.width
     let displayH = def.height
+    // Origin at sprite top; shift so the seed-disc top sits on the hop band.
+    const spriteY = landingY - displayH * head.y
+    const pad = this.platforms.create(x, spriteY, art.texture)
+    pad.setDepth(4)
+    pad.setOrigin(0.5, 0)
     if (pad.frame.width > 0) {
       displayH = Math.round(displayW * pad.frame.height / pad.frame.width)
+      pad.y = landingY - displayH * head.y
     }
     pad.setDisplaySize(displayW, displayH)
 
-    const head = this.headNorm(def)
     pad.body.setSize(head.w * pad.frame.width, head.h * pad.frame.height)
     pad.body.setOffset(head.x * pad.frame.width, head.y * pad.frame.height)
     pad.body.setImmovable(true)
