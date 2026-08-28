@@ -4,7 +4,7 @@ import { eggs } from '../eggs.js'
 // Everything world-specific is data so RunScene stays generic — adding worlds 4-10
 // later is a matter of appending records, not touching the scene.
 // `mode: 'run'` is the ground runner (Stadium, Kampung). `mode: 'hop'` is Shine:
-// one-way sunflower heads, no floor after the opening ledge.
+// one-way sunflower heads, no ground strip; the run starts on a pad.
 //
 // `locked: true` restores the deck's collection gating: the select screen requires
 // the matching egg in the player's collection. The farm starts with Sunny Maxx
@@ -13,7 +13,7 @@ export const worlds = [
   {
     id: 'shine',
     eggId: 0,
-    // Hop: one-way sunflower pads, no ground after the opening ledge.
+    // Hop: one-way sunflower pads, no ground strip. Start standing on a sunflower.
     // Stadium (`sprint`) and Kampung stay `run`.
     mode: 'hop',
     title: 'Shine EGGnyway',
@@ -22,16 +22,16 @@ export const worlds = [
     locked: true,
     power: { key: 'shield', name: 'Sunshine Shield', blurb: 'Saves 1 fall' },
     collectible: 'Sun Drop',
-    // Aligned 512-wide PNGs. Display ~80–96px; height follows PNG aspect
+    // Aligned 512-wide PNGs. Display ~176–192px so head + stem read; height follows PNG aspect
     // (short 296/512, mid 498/512, tall 619/512). Head (PNG px from top-left)
-    // is visual only. All three share one one-way pad collider; the stem is not solid.
+    // is visual only. All three share one one-way pad collider scaled with the sprite; stem / petals / leaves are not solid.
     padCollider: { x: 8, y: 8, w: 496, h: 40 },
     platforms: [
       {
         id: 'sunflower-short',
         band: 'short',
-        width: 88,
-        height: 51,
+        width: 176,
+        height: 102,
         src: { w: 512, h: 296 },
         file: 'platforms/shine/sunflower-short.png',
         head: { x: 8, y: 13, w: 494, h: 200 },
@@ -39,8 +39,8 @@ export const worlds = [
       {
         id: 'sunflower-mid',
         band: 'mid',
-        width: 92,
-        height: 89,
+        width: 184,
+        height: 179,
         src: { w: 512, h: 498 },
         file: 'platforms/shine/sunflower-mid.png',
         head: { x: 8, y: 10, w: 495, h: 175 },
@@ -48,8 +48,8 @@ export const worlds = [
       {
         id: 'sunflower-tall',
         band: 'tall',
-        width: 96,
-        height: 116,
+        width: 192,
+        height: 232,
         src: { w: 512, h: 619 },
         file: 'platforms/shine/sunflower-tall.png',
         head: { x: 8, y: 8, w: 496, h: 168 },

@@ -47,11 +47,13 @@ Three launch worlds, matching the deck's Phase 1 shortlist:
 | Come On Lah | Walao Egg | Lah! Luck — turns hazards into boost pads |
 
 Each world has a `mode`. **Shine is hop**: designer sunflower PNGs
-(`public/platforms/shine/sunflower-{short,mid,tall}.png`, 512-wide) display at ~80–96px
-with height following the PNG aspect. All three share one one-way pad collider
-`{ x: 8, y: 8, w: 496, h: 40 }` in source pixels, scaled to display size; the stem is
-visual. After a short opening ledge there is no ground — miss a pad and the run is over
-instantly. Sunshine Shield saves one fall. Double jump is a safety net, never required.
+(`public/platforms/shine/sunflower-{short,mid,tall}.png`, 512-wide) display at ~176–192px
+with height following the PNG aspect so the head and stem both read. All three share one
+one-way pad collider `{ x: 8, y: 8, w: 496, h: 40 }` in source pixels, scaled to display
+size; the stem is visual. The run starts already standing on a sunflower — no ground
+strip at ready or at run start. Miss a pad and the run is over instantly. Sun Drops sit
+on the seed disc, not in the air between pads. Sunshine Shield saves one fall. Double
+jump is a safety net, never required.
 Stadium and Kampung stay the ground runner (three hearts, jump the hazards).
 
 Scoring is +1 per hazard cleared or pad landed, +2 for a tight "perfect", and coins pay out

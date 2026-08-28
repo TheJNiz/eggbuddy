@@ -352,7 +352,7 @@ export default class RunScene extends Phaser.Scene {
 
   // Palette sunflowers until designer PNGs land. Same fallback pattern as the
   // fence/stump/shell — not replacement art. Head sits at the top of the texture
-  // so the 72x16 hitbox covers the landable face; stem hangs below, visual only.
+  // so the shared pad strip covers the landable face; stem hangs below, visual only.
   buildSunflowerTextures() {
     const defs = worldPlatforms(this.world)
     const byBand = Object.fromEntries(defs.map((def) => [def.band, def]))
@@ -368,20 +368,23 @@ export default class RunScene extends Phaser.Scene {
   drawSunflower(g, width, height) {
     const p = this.world.palette
     const cx = width / 2
-    const headCy = 28
-    const stemW = 8
+    const s = width / 88
+    const headCy = 28 * s
+    const stemW = Math.max(6, 8 * s)
+    const petalR = 16 * s
+    const petal = 10 * s
 
-    g.fillStyle(0x3f6d1e, 1).fillRect(cx - stemW / 2, headCy + 10, stemW, height - headCy - 10)
-    g.fillStyle(p.groundEdge, 1).fillRect(cx - stemW / 2 + 2, headCy + 10, 3, height - headCy - 10)
+    g.fillStyle(0x3f6d1e, 1).fillRect(cx - stemW / 2, headCy + 10 * s, stemW, height - headCy - 10 * s)
+    g.fillStyle(p.groundEdge, 1).fillRect(cx - stemW / 2 + 2 * s, headCy + 10 * s, Math.max(2, 3 * s), height - headCy - 10 * s)
 
     g.fillStyle(p.accent, 1)
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2
-      g.fillCircle(cx + Math.cos(a) * 16, headCy + Math.sin(a) * 16, 10)
+      g.fillCircle(cx + Math.cos(a) * petalR, headCy + Math.sin(a) * petalR, petal)
     }
-    g.fillStyle(p.banner, 1).fillCircle(cx, headCy, 16)
-    g.fillStyle(0x6b3a12, 1).fillCircle(cx, headCy, 10)
-    g.fillStyle(0xc47a1a, 0.75).fillCircle(cx - 2, headCy - 2, 3)
+    g.fillStyle(p.banner, 1).fillCircle(cx, headCy, 16 * s)
+    g.fillStyle(0x6b3a12, 1).fillCircle(cx, headCy, 10 * s)
+    g.fillStyle(0xc47a1a, 0.75).fillCircle(cx - 2 * s, headCy - 2 * s, 3 * s)
   }
 
   // -------------------------------------------------------------- background
@@ -438,7 +441,9 @@ export default class RunScene extends Phaser.Scene {
 
   buildGround() {
     if (this.isHop) {
-      this.buildStartLedge()
+      // No floor at ready or at run start — the first sunflower is the stand.
+      this.groundTile = null
+      this.groundBody = null
       return
     }
 
@@ -450,40 +455,6 @@ export default class RunScene extends Phaser.Scene {
       this.width / 2, this.groundY + 20, this.width, 40, 0x000000, 0,
     )
     this.physics.add.existing(this.groundBody, true)
-  }
-
-  // Finite opening floor so hop has somewhere to stand, then it scrolls off.
-  // After this there is no screen-spanning ground — only sunflower heads.
-  buildStartLedge() {
-    const ledgeWidth = Math.round(this.heroX + 220 * this.motion)
-    this.startLedgeWidth = ledgeWidth
-    this.startLedgeAlive = true
-
-    this.groundTile = this.add
-      .tileSprite(0, this.groundY, ledgeWidth, this.groundStrip, this.texGround)
-      .setOrigin(0, 0).setDepth(1)
-
-    this.groundBody = this.add.rectangle(
-      ledgeWidth / 2, this.groundY + 20, ledgeWidth, 40, 0x000000, 0,
-    )
-    this.physics.add.existing(this.groundBody, false)
-    this.groundBody.body.setImmovable(true)
-    this.groundBody.body.setAllowGravity(false)
-    this.groundBody.body.checkCollision.down = false
-    this.groundBody.body.checkCollision.left = false
-    this.groundBody.body.checkCollision.right = false
-  }
-
-  scrollStartLedge(speed) {
-    if (!this.startLedgeAlive) return
-    this.groundBody.body.setVelocityX(-speed)
-    this.groundTile.x = this.groundBody.x - this.startLedgeWidth / 2
-    if (this.groundTile.x + this.startLedgeWidth < -8) {
-      this.startLedgeAlive = false
-      this.groundBody.body.setVelocityX(0)
-      this.groundBody.body.enable = false
-      this.groundTile.setVisible(false)
-    }
   }
 
   buildHero() {
@@ -508,10 +479,11 @@ export default class RunScene extends Phaser.Scene {
     // before the first scene update, and the squash tween needs a rest scale to return to.
     this.heroScale = scale
 
+    const standY = this.isHop ? this.hopBands.short : this.groundY
     this.heroShadow = this.add
-      .ellipse(this.heroX, this.groundY + 1, 70, 17, 0x000000, 0.2).setDepth(2)
+      .ellipse(this.heroX, standY + 1, 70, 17, 0x000000, 0.2).setDepth(2)
 
-    this.hero = this.physics.add.sprite(this.heroX, this.groundY, this.heroKey, frameName)
+    this.hero = this.physics.add.sprite(this.heroX, standY, this.heroKey, frameName)
     this.hero.setScale(scale).setOrigin(0.5, 1)
     // Above the HUD (20/21). A double jump overshoots the HUD row on short canvases, and
     // briefly covering the score beats the player losing sight of their egg behind it.
@@ -531,9 +503,11 @@ export default class RunScene extends Phaser.Scene {
     // the hitbox, and ignoring that inset would let the egg's crown clip off screen.
     this.heroCeiling = 2 + this.hero.body.offset.y * scale
 
-    this.physics.add.collider(this.hero, this.groundBody, () => {
-      if (!this.wasGrounded) this.onLand()
-    })
+    if (!this.isHop) {
+      this.physics.add.collider(this.hero, this.groundBody, () => {
+        if (!this.wasGrounded) this.onLand()
+      })
+    }
 
     this.shieldRing = this.add.circle(0, 0, 58, 0xffffff, 0)
       .setStrokeStyle(4, this.world.palette.accent, 0.9)
@@ -560,7 +534,7 @@ export default class RunScene extends Phaser.Scene {
       (hero, pad) => {
         if (!this.wasGrounded) {
           this.onLand()
-          this.scoreHopLanding(pad)
+          if (this.phase === 'running') this.scoreHopLanding(pad)
         }
       },
       (hero, pad) => {
@@ -818,7 +792,6 @@ export default class RunScene extends Phaser.Scene {
     if (this.isHop) {
       this.hero.setX(this.heroX)
       this.hero.body.setVelocityX(0)
-      this.scrollStartLedge(speed)
       this.platforms.setVelocityX(-speed)
       this.coins.setVelocityX(-speed)
       this.maybeSpawnHopPads()
@@ -842,8 +815,7 @@ export default class RunScene extends Phaser.Scene {
   scrollBackground(speed, dt) {
     this.hillFar.tilePositionX += speed * dt * 0.18
     this.hillNear.tilePositionX += speed * dt * 0.42
-    // Hop ledge translates as a whole; extra tile-scroll would treadmill it.
-    if (!this.isHop) this.groundTile.tilePositionX += speed * dt
+    if (this.groundTile) this.groundTile.tilePositionX += speed * dt
 
     for (const cloud of this.clouds) {
       cloud.x -= speed * dt * 0.08
@@ -942,6 +914,7 @@ export default class RunScene extends Phaser.Scene {
     // Shadow shrinks with height, which is most of what sells the jump arc.
     const height = Phaser.Math.Clamp((this.groundY - this.hero.y) / 170, 0, 1)
     this.heroShadow.setScale(1 - height * 0.55).setAlpha(0.22 * (1 - height * 0.7))
+    if (this.isHop) this.heroShadow.setPosition(this.hero.x, this.hero.y + 1)
 
     this.shieldRing.setPosition(this.hero.x, this.hero.y - HERO_HEIGHT / 2)
   }
@@ -1086,6 +1059,7 @@ export default class RunScene extends Phaser.Scene {
   }
 
   collectCoin(coin) {
+    if (this.phase !== 'running') return
     const doubled = this.time.now < this.dashUntil || this.time.now < this.luckUntil
     const gain = this.combo * (doubled ? 2 : 1)
 
@@ -1149,7 +1123,6 @@ export default class RunScene extends Phaser.Scene {
     this.hazards.setVelocityX(0)
     this.platforms?.setVelocityX(0)
     this.coins.setVelocityX(0)
-    if (this.isHop && this.startLedgeAlive) this.groundBody.body.setVelocityX(0)
 
     this.add.text(this.width / 2, this.height * 0.42, 'RUN OVER', {
       fontFamily: FONT, fontSize: '46px', fontStyle: '900', color: '#fff8e8',
@@ -1262,25 +1235,27 @@ export default class RunScene extends Phaser.Scene {
     return t > 0.08 ? t : null
   }
 
-  hopGap(heightUp, def) {
+  hopGap(heightUp, def, prevHeadW = 0) {
     const t = this.flightTime(heightUp) ?? AIR_TIME * 0.5
     const reach = this.speed * t
     const headW = this.padLandDisplay(def).width
-    const minGap = headW + 36 * this.motion
-    // Stay under one-jump reach (double jump is a safety net, not the plan).
-    const maxGap = reach / CLEARANCE_MARGIN
-    const low = Math.min(Math.max(minGap, reach * 0.72), Math.max(8, maxGap - 8))
-    const high = Math.max(low + 4, maxGap)
-    return low + Math.random() * (high - low)
+    // Jump-reach is the empty space between discs. Center-to-center would make
+    // wider pads uncleareable even though the air gap is still one jump.
+    const minAir = 36 * this.motion
+    const maxAir = reach / CLEARANCE_MARGIN
+    const low = Math.min(Math.max(minAir, reach * 0.35), Math.max(8, maxAir - 8))
+    const high = Math.max(low + 4, maxAir)
+    const air = low + Math.random() * (high - low)
+    return (prevHeadW + headW) / 2 + air
   }
 
   chooseHopBand(fromY) {
     const defs = worldPlatforms(this.world)
+    const minAir = 36 * this.motion
     const reachable = defs.filter((def) => {
       const t = this.flightTime(fromY - this.hopBands[def.band])
       if (t == null) return false
-      const minClear = this.padLandDisplay(def).width + 36 * this.motion
-      return this.speed * t >= minClear
+      return this.speed * t >= minAir
     })
     const pool = reachable.length ? reachable : defs.filter((item) => item.band === 'short')
     const pick = pool[Math.floor(Math.random() * pool.length)] || defs[0]
@@ -1298,12 +1273,21 @@ export default class RunScene extends Phaser.Scene {
 
   spawnHopPad(prev) {
     const defs = worldPlatforms(this.world)
-    const fromX = prev ? prev.x : this.startLedgeWidth
-    const fromY = prev ? prev.getData('landingY') : this.groundY
-    const band = this.chooseHopBand(fromY)
-    const def = defs.find((item) => item.band === band) || defs[0]
-    const landingY = this.hopBands[def.band]
-    const x = fromX + this.hopGap(fromY - landingY, def)
+    const start = !prev
+    let def
+    let landingY
+    let x
+    if (start) {
+      def = defs.find((item) => item.band === 'short') || defs[0]
+      landingY = this.hopBands[def.band]
+      x = this.heroX
+    } else {
+      const fromY = prev.getData('landingY')
+      const band = this.chooseHopBand(fromY)
+      def = defs.find((item) => item.band === band) || defs[0]
+      landingY = this.hopBands[def.band]
+      x = prev.x + this.hopGap(fromY - landingY, def, prev.getData('headWidth') || 0)
+    }
 
     const art = this.resolveArt(def.id, def.id, def.width, def.height)
     const collider = this.padCollider()
@@ -1336,49 +1320,28 @@ export default class RunScene extends Phaser.Scene {
     pad.body.checkCollision.right = false
 
     const land = this.padLandDisplay({ ...def, width: displayW, height: displayH })
-    pad.setData('scored', false)
+    pad.setData('scored', start)
     pad.setData('band', def.band)
     pad.setData('landingY', landingY)
     pad.setData('headWidth', land.width)
     pad.setData('headHeight', land.height)
 
-    if (prev && Math.random() < 0.78) this.spawnHopCoins(prev, pad)
-    if (Math.random() < 0.34) this.spawnSundrop(pad, def, displayH)
+    if (!start && Math.random() < 0.55) this.spawnPadPickup(pad)
     return pad
   }
 
-  spawnSundrop(pad, def, displayH) {
+  // Sit the Sun Drop on the seed disc. No trails in the empty air between pads.
+  spawnPadPickup(pad) {
     const w = 30
     const h = 36
     const art = this.resolveArt('sundrop', 'coin', w, h)
-    const collider = this.padCollider()
-    const src = this.padSrc(def)
-    const sitY = pad.y + displayH * (collider.y / src.h) - 4
-    const drop = this.coins.create(pad.x, sitY - h / 2, art.texture)
-    drop.setDepth(5)
-    drop.setDisplaySize(art.width, art.height)
-    drop.body.setCircle(Math.round(drop.frame.width * 0.42), 1, 2)
-  }
-
-  spawnHopCoins(fromPad, toPad) {
-    const count = 2 + Math.floor(Math.random() * 2)
-    for (let i = 0; i < count; i++) {
-      const t = (i + 1) / (count + 1)
-      const x = Phaser.Math.Linear(fromPad.x, toPad.x, t)
-      const y = Phaser.Math.Linear(
-        fromPad.getData('landingY'),
-        toPad.getData('landingY'),
-        t,
-      ) - 48
-      const art = this.resolveArt('coin', 'coin', 26, 32)
-      const coin = this.coins.create(x, y, art.texture)
-      coin.setDepth(4)
-      coin.setDisplaySize(art.width, art.height)
-      coin.body.setCircle(Math.round(coin.frame.width * 0.46), 1, 4)
-      if (!this.reduceMotion) {
-        this.tweens.add({ targets: coin, scaleX: 0.72, duration: 420, yoyo: true, repeat: -1 })
-      }
-    }
+    const landY = pad.getData('landingY')
+    const headW = pad.getData('headWidth') || 48
+    const x = pad.x + (Math.random() - 0.5) * headW * 0.3
+    const coin = this.coins.create(x, landY - h * 0.38, art.texture)
+    coin.setDepth(5)
+    coin.setDisplaySize(art.width, art.height)
+    coin.body.setCircle(Math.round(coin.frame.width * 0.42), 1, 2)
   }
 
   scoreHopLanding(pad) {
