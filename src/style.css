@@ -1041,45 +1041,6 @@ h2 {
   cursor: not-allowed;
 }
 
-.qr-form {
-  display: grid;
-  gap: 10px;
-}
-
-.qr-label {
-  display: grid;
-  gap: 6px;
-  color: #786c59;
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-}
-
-.qr-input {
-  width: 100%;
-  min-height: 48px;
-  padding: 10px 12px;
-  border: 2px solid #2f2a22;
-  border-radius: 14px;
-  background: #fffdf6;
-  color: inherit;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.qr-input:disabled {
-  opacity: 0.6;
-}
-
-.qr-error {
-  margin: 0;
-  color: #9c2b1e;
-  font-size: 12px;
-  font-weight: 800;
-}
-
 .collection {
   padding: 20px 0 18px;
 }
@@ -1476,7 +1437,7 @@ footer {
   .stats > div { padding: 12px; }
 
   .qr {
-    grid-template-columns: 1fr minmax(220px, 0.42fr);
+    grid-template-columns: 1fr 190px;
     align-items: center;
     padding: 26px 28px;
   }

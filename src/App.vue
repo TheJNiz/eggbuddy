@@ -355,33 +355,32 @@ function onRunEnd(result) {
   revealShowTimer = window.setTimeout(() => showReveal({ ...egg, fresh }), 260)
 }
 
-const cartonCode = ref('')
 const qrBusy = ref(false)
-const qrError = ref('')
 
-// Server-side unique redeem. Valid codes are hashed in server/cartons.json —
-// this client never lists them. Grants restock feed and energy only (no coins, no IAP).
-async function redeemQr() {
+// Demo-only sequence: each tap pretends a carton was scanned. Valid codes are
+// hashed in server/cartons.json; the last entry is unknown so the demo can
+// show invalid / already-used. Grants restock feed and energy only (no coins, no IAP).
+const DEMO_SCANS = ['CARTON-SHINE-01', 'CARTON-MOVE-01', 'CARTON-LAH-01', 'CARTON-FAKE-01']
+let demoScanIndex = 0
+
+async function scan() {
   if (qrBusy.value) return
-  qrError.value = ''
   qrBusy.value = true
   try {
-    const result = await redeemCarton(cartonCode.value)
-    if (!result.ok) {
-      qrError.value = result.error
-      return say(result.error)
-    }
+    const code = DEMO_SCANS[demoScanIndex % DEMO_SCANS.length]
+    demoScanIndex++
+    const result = await redeemCarton(code)
+    if (!result.ok) return say(result.error)
 
     const food = Number.isFinite(result.reward?.food) ? Math.max(0, Math.floor(result.reward.food)) : 0
     const energy = Number.isFinite(result.reward?.energy) ? Math.max(0, Math.floor(result.reward.energy)) : 0
     if (food) state.food += food
     if (energy) state.energy = clamp(state.energy + energy)
 
-    cartonCode.value = ''
     const bits = []
     if (food) bits.push(`+${food} feed`)
     if (energy) bits.push(`+${energy} energy`)
-    say(`Carton redeemed: ${result.reward?.label || 'Restock'} · ${bits.join(' · ') || 'nothing to restock'} 📦`)
+    say(`QR scanned: ${result.reward?.label || 'Restock'} unlocked!${bits.length ? ` ${bits.join(' · ')}` : ''} 📦`)
   } finally {
     qrBusy.value = false
   }
@@ -554,28 +553,12 @@ onUnmounted(() => {
       <section class="qr card">
         <div>
           <span class="eyebrow">REAL PRODUCT → DIGITAL REWARD</span>
-          <h2>Redeem your carton</h2>
-          <p>Each carton code is unique and single-use on the server. Redeeming restocks scarce feed and energy so you can keep playing — never pay in-app.</p>
+          <h2>Scan your EGGbuddy QR</h2>
+          <p>In production, each carton QR is unique and single-use. This demo pretends to scan one and restocks feed and energy — never coins, never pay in-app.</p>
         </div>
-        <form class="qr-form" @submit.prevent="redeemQr">
-          <label class="qr-label">
-            Carton code
-            <input
-              v-model="cartonCode"
-              class="qr-input"
-              type="text"
-              name="carton-code"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="Enter carton code"
-              :disabled="qrBusy"
-            >
-          </label>
-          <button type="submit" class="scan" :disabled="qrBusy || !cartonCode.trim()">
-            ▦<span>{{ qrBusy ? 'Redeeming…' : 'Redeem carton' }}</span>
-          </button>
-          <p v-if="qrError" class="qr-error" role="alert">{{ qrError }}</p>
-        </form>
+        <button type="button" class="scan" :disabled="qrBusy" @click="scan">
+          ▦<span>{{ qrBusy ? 'Scanning…' : 'Scan demo QR' }}</span>
+        </button>
       </section>
 
       <section class="collection card" aria-labelledby="collection-title">

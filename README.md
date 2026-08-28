@@ -117,23 +117,24 @@ leaves that run letterboxed until it ends, rather than killing the run to resize
 
 ## Production QR design
 
-`scan()` is gone. The farm redeem form posts to `POST /api/qr/redeem` through `src/qr.js`.
+The farm **Scan demo QR** button pretends a carton was scanned and posts to `POST /api/qr/redeem` through `src/qr.js`. There is no typed-code form and no camera.
 
 On the Vite dev server, a Vite plugin (`server/vitePlugin.js`) serves that route from `server/qrRedeem.js`.
 
-Valid carton codes live only as SHA-256 hashes in `server/cartons.json`. The client never lists them.
+Valid carton codes live only as SHA-256 hashes in `server/cartons.json`.
 
 Each hash is single-use; redemptions persist in `server/.redemptions.json` (gitignored).
 
 Rewards restock feed and energy only — no coins, no IAP.
 
-GitHub Pages will not run this Node stub. Static hosting has no `/api/qr/redeem`; redeem will fail there until a real backend exists.
+GitHub Pages will not run this Node stub. Static hosting has no `/api/qr/redeem`; scan will fail there until a real backend exists.
 
-Demo stub codes for local development only (hashes already in `cartons.json`):
+The demo button cycles three hashed local codes, then an unknown code so you can see invalid / already-redeemed (later taps wrap onto already-used):
 
-- `CARTON-SHINE-01`
-- `CARTON-MOVE-01`
-- `CARTON-LAH-01`
+1. `CARTON-SHINE-01` — +2 feed, +20 energy
+2. `CARTON-MOVE-01` — +2 feed, +20 energy
+3. `CARTON-LAH-01` — +3 feed, +25 energy
+4. unknown (`CARTON-FAKE-01`) — invalid
 
 Suggested production backend tables:
 
