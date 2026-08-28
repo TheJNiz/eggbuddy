@@ -4,10 +4,11 @@ The farm and collection already have art on disk. Do not replace or redraw these
 
 - `public/eggs/` — collection badges and matching `-character.png` scenes
 - `public/chicken-walk.png` — four-frame farm walk cycle
+- `public/platforms/shine/` — Shine hop sunflower pads and Sun Drop pickup
 
-EGGSCAPE currently crops a collection badge for the running hero and generates hazards/pickups from the world palette when no PNG is present. The slots below are the missing **isolated** sprites (transparent, cropped to the object — not the full-bleed character scenes). Point `file` in `src/game/sprites.js` / `src/game/worlds.js` at the public path once a PNG exists; RunScene will preload and use it.
+EGGSCAPE currently crops a collection badge for the running hero and generates hazards/pickups from the world palette when no PNG is present. The slots below are the missing **isolated** sprites (transparent, cropped to the object — not the full-bleed character scenes). Point `file` in `src/game/worlds.js` at the public path once a PNG exists; RunScene will preload and use it.
 
-Until then every slot is `file: null`. Do not invent stand-in art in code.
+Palette fallback only if a file is missing. Do not invent stand-in art in code.
 
 ## Missing files
 

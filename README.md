@@ -46,10 +46,13 @@ Three launch worlds, matching the deck's Phase 1 shortlist:
 | Move First, Magic Follow | Eggxercise | First Move Dash — 3s untouchable burst |
 | Come On Lah | Walao Egg | Lah! Luck — turns hazards into boost pads |
 
-Each world has a `mode`. **Shine is hop**: sunflowers are one-way landing pads at three
-heights (head collider only; the stem is visual). After a short opening ledge there is no
-ground — miss a pad and the run is over. Sunshine Shield saves one fall. Stadium and
-Kampung stay the ground runner (three hearts, jump the hazards).
+Each world has a `mode`. **Shine is hop**: designer sunflower PNGs
+(`public/platforms/shine/sunflower-{short,mid,tall}.png`, 512-wide) display at ~80–96px
+with height following the PNG aspect. All three share one one-way pad collider
+`{ x: 8, y: 8, w: 496, h: 40 }` in source pixels, scaled to display size; the stem is
+visual. After a short opening ledge there is no ground — miss a pad and the run is over
+instantly. Sunshine Shield saves one fall. Double jump is a safety net, never required.
+Stadium and Kampung stay the ground runner (three hearts, jump the hazards).
 
 Scoring is +1 per hazard cleared or pad landed, +2 for a tight "perfect", and coins pay out
 ×combo (combo caps at ×8, resets on a hit). The power meter fills on coin pickups; tap the
@@ -158,4 +161,4 @@ Suggested production backend tables:
 
 ## Artwork
 The egg collection uses the transparent PNG artwork in `public/eggs`. Matching `-character.png` files are retained for future character views.
-The farm walk cycle uses `public/chicken-walk.png`, wired through `asset()` for the GitHub Pages base path. Missing EGGSCAPE hazard sprites are listed in `src/game/sprites.js` (`DESIGNER_NEEDS`).
+The farm walk cycle uses `public/chicken-walk.png`, wired through `asset()` for the GitHub Pages base path. Shine hop pads and the Sun Drop live in `public/platforms/shine/`. Remaining missing EGGSCAPE sprites are listed in `src/game/sprites.js` (`DESIGNER_NEEDS`).
