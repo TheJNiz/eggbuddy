@@ -3,8 +3,10 @@ import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, react
 import { asset } from './assets.js'
 import { eggs, randomEggOfRarity, rollEggRarity } from './eggs.js'
 import { worlds } from './game/worlds.js'
+import { redeemCarton } from './qr.js'
 
 const STORAGE_KEY = 'eggbuddy-v1'
+const chickenWalkImage = `url("${asset('chicken-walk.png')}")`
 
 // Async so the overlay — and the Phaser chunk it dynamically imports — stays out of
 // the farm's initial bundle.
@@ -353,19 +355,36 @@ function onRunEnd(result) {
   revealShowTimer = window.setTimeout(() => showReveal({ ...egg, fresh }), 260)
 }
 
-function scan() {
-  const rewards = [
-    ['Chicken Feed', () => { state.food += 2 }],
-    ['Vitamins', () => { state.vitamins += 1 }],
-    ['50 Coins', () => { state.coins += 50 }],
-    ['Premium Feed', () => {
-      state.food += 3
-      state.happiness = clamp(state.happiness + 10)
-    }],
-  ]
-  const reward = rewards[Math.floor(Math.random() * rewards.length)]
-  reward[1]()
-  say(`QR scanned: ${reward[0]} unlocked! 📦`)
+const cartonCode = ref('')
+const qrBusy = ref(false)
+const qrError = ref('')
+
+// Server-side unique redeem. Valid codes are hashed in server/cartons.json —
+// this client never lists them. Grants restock feed and energy only (no coins, no IAP).
+async function redeemQr() {
+  if (qrBusy.value) return
+  qrError.value = ''
+  qrBusy.value = true
+  try {
+    const result = await redeemCarton(cartonCode.value)
+    if (!result.ok) {
+      qrError.value = result.error
+      return say(result.error)
+    }
+
+    const food = Number.isFinite(result.reward?.food) ? Math.max(0, Math.floor(result.reward.food)) : 0
+    const energy = Number.isFinite(result.reward?.energy) ? Math.max(0, Math.floor(result.reward.energy)) : 0
+    if (food) state.food += food
+    if (energy) state.energy = clamp(state.energy + energy)
+
+    cartonCode.value = ''
+    const bits = []
+    if (food) bits.push(`+${food} feed`)
+    if (energy) bits.push(`+${energy} energy`)
+    say(`Carton redeemed: ${result.reward?.label || 'Restock'} · ${bits.join(' · ') || 'nothing to restock'} 📦`)
+  } finally {
+    qrBusy.value = false
+  }
 }
 
 function reset() {
@@ -424,7 +443,11 @@ onUnmounted(() => {
 
     <main>
       <section class="hero card">
-        <div :class="['scene', `action-${activeAction}`]" aria-hidden="true">
+        <div
+          :class="['scene', `action-${activeAction}`]"
+          :style="{ '--chicken-walk': chickenWalkImage }"
+          aria-hidden="true"
+        >
           <div class="sky-shine"></div>
           <div class="sun"></div>
           <div class="cloud-belt">
@@ -531,10 +554,28 @@ onUnmounted(() => {
       <section class="qr card">
         <div>
           <span class="eyebrow">REAL PRODUCT → DIGITAL REWARD</span>
-          <h2>Scan your EGGbuddy QR</h2>
-          <p>In production, each carton code can be unique and single-use. This demo gives a random feed, vitamin, coin or premium reward.</p>
+          <h2>Redeem your carton</h2>
+          <p>Each carton code is unique and single-use on the server. Redeeming restocks scarce feed and energy so you can keep playing — never pay in-app.</p>
         </div>
-        <button type="button" class="scan" @click="scan">▦<span>Scan demo QR</span></button>
+        <form class="qr-form" @submit.prevent="redeemQr">
+          <label class="qr-label">
+            Carton code
+            <input
+              v-model="cartonCode"
+              class="qr-input"
+              type="text"
+              name="carton-code"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Enter carton code"
+              :disabled="qrBusy"
+            >
+          </label>
+          <button type="submit" class="scan" :disabled="qrBusy || !cartonCode.trim()">
+            ▦<span>{{ qrBusy ? 'Redeeming…' : 'Redeem carton' }}</span>
+          </button>
+          <p v-if="qrError" class="qr-error" role="alert">{{ qrError }}</p>
+        </form>
       </section>
 
       <section class="collection card" aria-labelledby="collection-title">

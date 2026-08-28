@@ -17,7 +17,7 @@ npm run dev
 - Lay eggs when the chicken is healthy enough
 - 10 collectible IP eggs from the supplied character sheet
 - Rarity system: Common / Rare / Epic / Legendary
-- QR reward demo (random reward)
+- QR carton redeem stub (server-side unique codes restock feed and energy)
 - Duplicate eggs turn into coins
 - Browser localStorage persistence + offline stat decay
 - **EGGSCAPE** one-tap endless runner mini-game (see below)
@@ -65,14 +65,16 @@ chicken fed rather than a way around it:
 ### Code layout
 
 - `src/game/worlds.js` — the three world definitions (palette, hazards, power). Everything
-  world-specific is data, so worlds 4–10 are new records, not new scene code. Each has a
-  `locked` flag: it is `false` everywhere so a demo viewer can play all three, and flipping
-  it to `true` restores the deck's "collect the egg to unlock the world" gating.
-- `src/game/RunScene.js` — the runner itself. Backgrounds, hazards and coins are generated
-  at runtime from the world palette, so the mini-game adds no new art files.
+  world-specific is data, so worlds 4–10 are new records, not new scene code. Each world is
+  `locked: true` and needs the matching collectible egg (Shine starts unlocked because a
+  fresh save already owns Sunny Maxx). Hazard slots list a `file` path; `null` means the
+  palette-generated fallback until designer art lands.
+- `src/game/sprites.js` — art-hook helpers and the designer-needs list for missing sprites.
+- `src/game/RunScene.js` — the runner itself. It loads a world sprite when `file` is set and
+  otherwise generates that piece from the world palette.
 - `src/game/createGame.js` — the Phaser factory, and the lazy-import boundary.
 - `src/components/EggscapeOverlay.vue` — select / play / results screens; owns the Phaser
-  lifecycle. `src/App.vue` owns all the economy math.
+  lifecycle and world locks. `src/App.vue` owns all the economy math.
 
 Phaser is dynamically imported, so it ships as its own ~345 KB gzip chunk that only
 downloads when someone opens the mini-game — the farm's initial bundle is unchanged.
@@ -113,11 +115,11 @@ button in the bottom-right, within thumb reach.
 runs works — the overlay builds a fresh Phaser game each time — but rotating *mid-run*
 leaves that run letterboxed until it ends, rather than killing the run to resize.
 
-## Production QR design
-Replace `scan()` in `src/App.vue` with an API call such as POST `/api/qr/redeem`.
-The server should store unique hashed carton codes and reject repeated redemption. Never keep valid QR codes only in frontend JavaScript.
+## Carton QR redeem
 
-Suggested backend tables:
+The farm form posts to /api/qr/redeem on the Vite dev server. Hashes live in server/cartons.json; grants restock feed and energy only.
+
+Suggested production tables:
 - users
 - chickens
 - egg_characters
@@ -130,4 +132,4 @@ Suggested backend tables:
 
 ## Artwork
 The egg collection uses the transparent PNG artwork in `public/eggs`. Matching `-character.png` files are retained for future character views.
-The animated farm scene uses the four-frame transparent `public/chicken-walk.png` sprite sheet.
+The farm walk cycle uses `public/chicken-walk.png`, wired through `asset()` for the GitHub Pages base path. Missing EGGSCAPE hazard sprites are listed in `src/game/sprites.js` (`DESIGNER_NEEDS`).

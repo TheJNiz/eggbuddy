@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { asset } from '../assets.js'
 import { worldEgg } from './worlds.js'
+import { artKey, worldHazards, worldPickup } from './sprites.js'
 
 // The width the speeds and spacings below were tuned against. A narrower canvas shows
 // less track ahead, so horizontal motion is scaled by width / REFERENCE_WIDTH to keep the
@@ -137,7 +138,38 @@ export default class RunScene extends Phaser.Scene {
     if (!this.textures.exists(this.heroKey)) {
       this.load.image(this.heroKey, asset(`eggs/${egg.image}`))
     }
+    this.queueWorldSprites()
     this.drawLoadingBar()
+  }
+
+  // Loads designer PNGs when a world slot has `file` set. Missing files are left
+  // `null` on purpose — Phaser would 404 them — and spawn falls back to the
+  // palette-generated textures in buildTextures().
+  queueWorldSprites() {
+    const queue = (id, file) => {
+      if (!file) return
+      const key = artKey(this.world.id, id)
+      if (!this.textures.exists(key)) this.load.image(key, asset(file))
+    }
+
+    for (const def of worldHazards(this.world)) queue(def.id, def.file)
+    queue('boost', worldPickup(this.world, 'boost'))
+    queue('coin', worldPickup(this.world, 'coin'))
+  }
+
+  fallbackTexture(name) {
+    if (name === 'stump') return this.texStump
+    if (name === 'shell') return this.texShell
+    if (name === 'boost') return this.texBoost
+    if (name === 'coin') return this.texCoin
+    return this.texFence
+  }
+
+  // Prefer a loaded sprite; otherwise the generated palette shape of `fallback`.
+  resolveArt(id, fallback, width, height) {
+    const key = artKey(this.world.id, id)
+    if (this.textures.exists(key)) return { texture: key, width, height }
+    return { texture: this.fallbackTexture(fallback), width, height }
   }
 
   drawLoadingBar() {
@@ -778,6 +810,7 @@ export default class RunScene extends Phaser.Scene {
   spawnCluster(time) {
     const lucky = time < this.luckUntil
     const reach = this.jumpReach
+    const defs = worldHazards(this.world)
 
     if (lucky) {
       this.spawnBoost()
@@ -786,11 +819,9 @@ export default class RunScene extends Phaser.Scene {
       // jump covers fewer pixels, so the opening speed offers only the slim fence and the
       // chunkier hazards unlock as the run speeds up — rather than spawning something
       // impossible. On desktop everything passes from the first spawn.
-      const options = [
-        { texture: this.texFence, width: 34, height: 68 },
-        { texture: this.texStump, width: 48, height: 56 },
-        { texture: this.texShell, width: 62, height: 40 },
-      ].filter((option) => this.canClear(option.width))
+      const options = defs
+        .map((def) => this.resolveArt(def.id, def.fallback, def.width, def.height))
+        .filter((option) => this.canClear(option.width))
 
       const pick = options.length
         ? options[Math.floor(Math.random() * options.length)]
@@ -804,8 +835,10 @@ export default class RunScene extends Phaser.Scene {
         // means it turns up once the run has some speed behind it (score ~19 on desktop).
         // 60 rather than 70 so the pair stays reachable at a phone's lower top speed.
         const offset = 60 * this.motion
-        if (this.score > 12 && Math.random() < 0.28 && this.canClear(offset + 62)) {
-          this.spawnHazard(this.texShell, 62, 40, offset)
+        const pair = defs.reduce((best, def) => (!best || def.width > best.width ? def : best), null)
+        if (pair && this.score > 12 && Math.random() < 0.28 && this.canClear(offset + pair.width)) {
+          const art = this.resolveArt(pair.id, pair.fallback, pair.width, pair.height)
+          this.spawnHazard(art.texture, art.width, art.height, offset)
         }
       }
     }
@@ -823,7 +856,12 @@ export default class RunScene extends Phaser.Scene {
       this.width + 60 + offsetX, this.groundY - height / 2 + 4, texture,
     )
     hazard.setDepth(4)
-    hazard.body.setSize(width * 0.78, height * 0.8)
+    // Real sprites arrive at arbitrary resolution; generated textures already
+    // match these gameplay sizes, so this is a no-op for the palette fallback.
+    // Arcade body size is source pixels (then scaled), so use the frame — not
+    // the display size — or a 512px PNG displayed at 34px would have a tiny box.
+    hazard.setDisplaySize(width, height)
+    hazard.body.setSize(hazard.frame.width * 0.78, hazard.frame.height * 0.8)
     hazard.setData('scored', false)
     hazard.setData('minClearance', Infinity)
     hazard.setData('boost', false)
@@ -831,9 +869,11 @@ export default class RunScene extends Phaser.Scene {
   }
 
   spawnBoost() {
-    const pad = this.hazards.create(this.width + 60, this.groundY - 13, this.texBoost)
+    const art = this.resolveArt('boost', 'boost', 56, 26)
+    const pad = this.hazards.create(this.width + 60, this.groundY - art.height / 2, art.texture)
     pad.setDepth(4)
-    pad.body.setSize(52, 22)
+    pad.setDisplaySize(art.width, art.height)
+    pad.body.setSize(pad.frame.width * 0.93, pad.frame.height * 0.85)
     pad.setData('scored', false)
     pad.setData('minClearance', Infinity)
     pad.setData('boost', true)
@@ -849,9 +889,11 @@ export default class RunScene extends Phaser.Scene {
     for (let i = 0; i < count; i++) {
       const t = count === 1 ? 0.5 : i / (count - 1)
       const y = this.groundY - 60 - Math.sin(t * Math.PI) * (this.groundY - 60 - peak)
-      const coin = this.coins.create(startX + i * step, y, this.texCoin)
+      const art = this.resolveArt('coin', 'coin', 26, 32)
+      const coin = this.coins.create(startX + i * step, y, art.texture)
       coin.setDepth(4)
-      coin.body.setCircle(12, 1, 4)
+      coin.setDisplaySize(art.width, art.height)
+      coin.body.setCircle(Math.round(coin.frame.width * 0.46), 1, 4)
       if (!this.reduceMotion) {
         this.tweens.add({ targets: coin, scaleX: 0.72, duration: 420, yoyo: true, repeat: -1 })
       }

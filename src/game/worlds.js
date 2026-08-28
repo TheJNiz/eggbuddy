@@ -4,9 +4,9 @@ import { eggs } from '../eggs.js'
 // Everything world-specific is data so RunScene stays generic — adding worlds 4-10
 // later is a matter of appending records, not touching the scene.
 //
-// `locked: false` on every world because this is a demo people click through. To ship
-// the deck's collection gating, set `locked: true` and the select screen will require
-// the matching egg in the player's collection.
+// `locked: true` restores the deck's collection gating: the select screen requires
+// the matching egg in the player's collection. The farm starts with Sunny Maxx
+// (egg 0), so Shine EGGnyway is playable on a fresh save.
 export const worlds = [
   {
     id: 'shine',
@@ -14,9 +14,19 @@ export const worlds = [
     title: 'Shine EGGnyway',
     subtitle: 'Sunflower Bounce',
     blurb: 'A bright opening run that teaches rhythm and timing.',
-    locked: false,
+    locked: true,
     power: { key: 'shield', name: 'Sunshine Shield', blurb: 'Absorbs 1 mistake' },
     collectible: 'Sun Drop',
+    // TODO(designer): public/hazards/shine/{sunflower,stump,shell}.png — see DESIGNER_NEEDS.
+    hazards: [
+      { id: 'sunflower', fallback: 'fence', width: 34, height: 68, file: null },
+      { id: 'stump', fallback: 'stump', width: 48, height: 56, file: null },
+      { id: 'shell', fallback: 'shell', width: 62, height: 40, file: null },
+    ],
+    sprites: {
+      boost: null, // TODO(designer): public/pickups/boost.png
+      coin: null,  // TODO(designer): public/pickups/golden-egg.png
+    },
     palette: {
       skyTop: 0x8ed6ff,
       skyBottom: 0xffe9a8,
@@ -36,9 +46,19 @@ export const worlds = [
     title: 'Move First, Magic Follow',
     subtitle: 'Stadium Sprint',
     blurb: 'Fast reactions build a streak while trophies reward perfect timing.',
-    locked: false,
+    locked: true,
     power: { key: 'dash', name: 'First Move Dash', blurb: '3s untouchable burst' },
     collectible: 'Medal',
+    // TODO(designer): public/hazards/sprint/{hurdle,cone,trophy}.png
+    hazards: [
+      { id: 'hurdle', fallback: 'fence', width: 34, height: 68, file: null },
+      { id: 'cone', fallback: 'stump', width: 48, height: 56, file: null },
+      { id: 'trophy', fallback: 'shell', width: 62, height: 40, file: null },
+    ],
+    sprites: {
+      boost: null,
+      coin: null,
+    },
     palette: {
       skyTop: 0xff9d6b,
       skyBottom: 0xffd9c0,
@@ -58,9 +78,19 @@ export const worlds = [
     title: 'Come On Lah',
     subtitle: 'Kampung Waddle',
     blurb: 'Dodge bananas, laundry and village surprises.',
-    locked: false,
+    locked: true,
     power: { key: 'luck', name: 'Lah! Luck', blurb: 'Turns hazards into boosts' },
     collectible: 'Ketupat',
+    // TODO(designer): public/hazards/kampung/{laundry,banana,bucket}.png
+    hazards: [
+      { id: 'laundry', fallback: 'fence', width: 34, height: 68, file: null },
+      { id: 'banana', fallback: 'stump', width: 48, height: 56, file: null },
+      { id: 'bucket', fallback: 'shell', width: 62, height: 40, file: null },
+    ],
+    sprites: {
+      boost: null,
+      coin: null,
+    },
     palette: {
       skyTop: 0x2b2350,
       skyBottom: 0x6b4a7a,
@@ -83,3 +113,8 @@ export function worldById(id) {
 export function worldEgg(world) {
   return eggs[world.eggId]
 }
+
+export function worldIsLocked(world, collection) {
+  return !!world.locked && !collection.includes(world.eggId)
+}
+

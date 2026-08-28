@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import { asset } from '../assets.js'
-import { worlds, worldEgg } from '../game/worlds.js'
+import { worlds, worldEgg, worldIsLocked } from '../game/worlds.js'
 
 const props = defineProps({
   bests: { type: Object, required: true },
@@ -27,6 +27,7 @@ let disposed = false
 
 const bestFor = (world) => props.bests[world.id] || 0
 const owned = (world) => props.collection.includes(world.eggId)
+const locked = (world) => worldIsLocked(world, props.collection)
 const eggArt = (world) => asset(`eggs/${worldEgg(world).image}`)
 
 const newBest = computed(() =>
@@ -37,7 +38,7 @@ function focusFirst() {
 }
 
 async function choose(world) {
-  if (!props.canRun) return
+  if (!props.canRun || locked(world)) return
   activeWorld.value = world
   phase.value = 'loading'
 
@@ -168,8 +169,9 @@ onUnmounted(() => {
             v-for="world in worlds"
             :key="world.id"
             type="button"
-            class="world-card"
-            :disabled="!canRun"
+            :class="['world-card', locked(world) && 'is-locked']"
+            :disabled="!canRun || locked(world)"
+            :title="locked(world) ? `Collect ${worldEgg(world).name} to unlock this world` : undefined"
             @click="choose(world)"
           >
             <span class="world-art"><img :src="eggArt(world)" alt=""></span>
@@ -178,8 +180,8 @@ onUnmounted(() => {
             <span class="world-power">⚡ {{ world.power.name }}</span>
             <span class="world-meta">
               <i>Best {{ bestFor(world) }}</i>
-              <i :class="owned(world) ? 'is-owned' : 'is-locked'">
-                {{ owned(world) ? 'Collected ✓' : 'Not yet collected' }}
+              <i :class="locked(world) ? 'is-locked' : (owned(world) ? 'is-owned' : 'is-open')">
+                {{ locked(world) ? `Needs ${worldEgg(world).name}` : (owned(world) ? 'Collected ✓' : 'Open') }}
               </i>
             </span>
           </button>
