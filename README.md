@@ -115,11 +115,28 @@ button in the bottom-right, within thumb reach.
 runs works — the overlay builds a fresh Phaser game each time — but rotating *mid-run*
 leaves that run letterboxed until it ends, rather than killing the run to resize.
 
-## Carton QR redeem
+## Production QR design
 
-The farm form posts to /api/qr/redeem on the Vite dev server. Hashes live in server/cartons.json; grants restock feed and energy only.
+`scan()` is gone. The farm redeem form posts to `POST /api/qr/redeem` through `src/qr.js`.
 
-Suggested production tables:
+On the Vite dev server, a Vite plugin (`server/vitePlugin.js`) serves that route from `server/qrRedeem.js`.
+
+Valid carton codes live only as SHA-256 hashes in `server/cartons.json`. The client never lists them.
+
+Each hash is single-use; redemptions persist in `server/.redemptions.json` (gitignored).
+
+Rewards restock feed and energy only — no coins, no IAP.
+
+GitHub Pages will not run this Node stub. Static hosting has no `/api/qr/redeem`; redeem will fail there until a real backend exists.
+
+Demo stub codes for local development only (hashes already in `cartons.json`):
+
+- `CARTON-SHINE-01`
+- `CARTON-MOVE-01`
+- `CARTON-LAH-01`
+
+Suggested production backend tables:
+
 - users
 - chickens
 - egg_characters
