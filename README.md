@@ -47,7 +47,7 @@ Three launch worlds, matching the deck's Phase 1 shortlist:
 | Come On Lah | Walao Egg | Lah! Luck — turns hazards into boost pads |
 
 Each world has a `mode`. **Shine is hop**: designer sunflower PNGs
-(`public/platforms/shine/sunflower-{short,mid,tall}.png`, 768-wide) display at ~176–192px
+(`public/platforms/shine/sunflower-{short,mid,tall}.png`, 768-wide) display at ~120–140px
 so the green heads read big. The landable AABB is the GREEN disc only, scaled with the
 sprite; petals and stem are visual. One-way from above. The run starts already standing
 on a sunflower — no floor collider. Miss a pad and the run is over instantly (Sunshine

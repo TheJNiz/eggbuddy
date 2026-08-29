@@ -22,38 +22,36 @@ export const worlds = [
     locked: true,
     power: { key: 'shield', name: 'Sunshine Shield', blurb: 'Saves 1 fall' },
     collectible: 'Golden Egg',
-    // Restyle pads are 768-wide, green disc at the top. Display ~176–192px so head + stem
-    // read; height follows PNG aspect. Head is visual only. Shared one-way pad collider
-    // is the green disc lip in source pixels, scaled with the sprite; stem / petals / leaves
-    // are not solid.
-    padCollider: { x: 16, y: 12, w: 736, h: 48 },
+    // Designer restyle: 768-wide sunflowers. Display ~120–140px so the green heads read big.
+    // Landable AABB is the GREEN disc only (source px), scaled with the sprite.
+    // Petals + stem are visual. One-way from above. No shared 7px / 48px lip.
     platforms: [
       {
         id: 'sunflower-short',
         band: 'short',
-        width: 176,
-        height: 118,
+        width: 128,
+        height: 86,
         src: { w: 768, h: 516 },
         file: 'platforms/shine/sunflower-short.png',
-        head: { x: 16, y: 12, w: 736, h: 220 },
+        head: { x: 188, y: 10, w: 392, h: 208 },
       },
       {
         id: 'sunflower-mid',
         band: 'mid',
-        width: 184,
-        height: 163,
+        width: 134,
+        height: 119,
         src: { w: 768, h: 682 },
         file: 'platforms/shine/sunflower-mid.png',
-        head: { x: 16, y: 12, w: 736, h: 240 },
+        head: { x: 16, y: 11, w: 737, h: 145 },
       },
       {
         id: 'sunflower-tall',
         band: 'tall',
-        width: 192,
-        height: 177,
+        width: 140,
+        height: 129,
         src: { w: 768, h: 708 },
         file: 'platforms/shine/sunflower-tall.png',
-        head: { x: 16, y: 12, w: 736, h: 250 },
+        head: { x: 17, y: 12, w: 736, h: 153 },
       },
     ],
     hazards: [],
