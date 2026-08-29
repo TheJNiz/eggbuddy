@@ -1,0 +1,16 @@
+{
+  "cartons": [
+    {
+      "hash": "f6b9d888312323cd03f66a76e9cbcd0a50eaf6026ac83465c0640652e317ce06",
+      "reward": { "food": 2, "energy": 20, "label": "Farm restock" }
+    },
+    {
+      "hash": "f9244a779ab765f1e77a6d2abdc04c0eac600d8a28b51d27b222a62c91ec9a18",
+      "reward": { "food": 2, "energy": 20, "label": "Farm restock" }
+    },
+    {
+      "hash": "b87f1742a63f920371e4a8a56eb637dcc2c24c9a6e591ef6516b2cb268630b6c",
+      "reward": { "food": 3, "energy": 25, "label": "Premium carton restock" }
+    }
+  ]
+}

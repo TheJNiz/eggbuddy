@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import { asset } from '../assets.js'
-import { worlds, worldEgg } from '../game/worlds.js'
+import { worlds, worldEgg, worldIsLocked } from '../game/worlds.js'
 
 const props = defineProps({
   bests: { type: Object, required: true },
@@ -20,6 +20,13 @@ const summary = ref(null)
 const canvasHost = ref(null)
 const shell = ref(null)
 
+// The results panel normally replaces the canvas 750ms after the egg dies, which is too
+// fast to screenshot the frame that caused the death. Under ?hopdebug the final frame is
+// held instead, and the results are one click away.
+const holdOnEnd = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).has('hopdebug')
+const held = ref(false)
+
 // Phaser instances are big and self-managing — reactivity would only cost proxy
 // overhead and risk Vue walking the whole scene graph.
 let runner = null
@@ -27,6 +34,7 @@ let disposed = false
 
 const bestFor = (world) => props.bests[world.id] || 0
 const owned = (world) => props.collection.includes(world.eggId)
+const locked = (world) => worldIsLocked(world, props.collection)
 const eggArt = (world) => asset(`eggs/${worldEgg(world).image}`)
 
 const newBest = computed(() =>
@@ -37,7 +45,7 @@ function focusFirst() {
 }
 
 async function choose(world) {
-  if (!props.canRun) return
+  if (!props.canRun || locked(world)) return
   activeWorld.value = world
   phase.value = 'loading'
 
@@ -55,6 +63,9 @@ async function choose(world) {
     world,
     best: bestFor(world),
     onRunEnd: handleRunEnd,
+    onPause: () => {
+      if (phase.value === 'play' && !paused.value) togglePause()
+    },
   })
 
   // Charged only once the run genuinely exists, so a failed load never costs energy.
@@ -64,9 +75,22 @@ async function choose(world) {
 function handleRunEnd(result) {
   if (disposed) return
   summary.value = result
+  emit('run-end', result)
+  // Freeze on the last rendered frame; the scene is already in its 'over' phase, so
+  // leaving the runner alive costs nothing but keeps the canvas on screen.
+  if (holdOnEnd) {
+    held.value = true
+    return
+  }
   phase.value = 'results'
   teardown()
-  emit('run-end', result)
+  focusFirst()
+}
+
+function revealHeldResults() {
+  held.value = false
+  phase.value = 'results'
+  teardown()
   focusFirst()
 }
 
@@ -74,10 +98,11 @@ function teardown() {
   runner?.destroy()
   runner = null
   paused.value = false
+  held.value = false
 }
 
 function togglePause() {
-  if (phase.value !== 'play') return
+  if (phase.value !== 'play' || held.value) return
   paused.value = !paused.value
   if (paused.value) runner?.pause()
   else runner?.resume()
@@ -113,7 +138,8 @@ function close() {
 function onKeydown(event) {
   if (event.key !== 'Escape') return
   event.stopPropagation()
-  if (phase.value === 'play') togglePause()
+  if (held.value) revealHeldResults()
+  else if (phase.value === 'play') togglePause()
   else if (phase.value === 'results') backToSelect()
   else close()
 }
@@ -143,7 +169,7 @@ onUnmounted(() => {
         </div>
         <div class="eggscape-bar-actions">
           <button
-            v-if="phase === 'play'"
+            v-if="phase === 'play' && !held"
             type="button"
             class="ghost"
             :aria-pressed="paused"
@@ -168,8 +194,9 @@ onUnmounted(() => {
             v-for="world in worlds"
             :key="world.id"
             type="button"
-            class="world-card"
-            :disabled="!canRun"
+            :class="['world-card', locked(world) && 'is-locked']"
+            :disabled="!canRun || locked(world)"
+            :title="locked(world) ? `Collect ${worldEgg(world).name} to unlock this world` : undefined"
             @click="choose(world)"
           >
             <span class="world-art"><img :src="eggArt(world)" alt=""></span>
@@ -178,8 +205,8 @@ onUnmounted(() => {
             <span class="world-power">⚡ {{ world.power.name }}</span>
             <span class="world-meta">
               <i>Best {{ bestFor(world) }}</i>
-              <i :class="owned(world) ? 'is-owned' : 'is-locked'">
-                {{ owned(world) ? 'Collected ✓' : 'Not yet collected' }}
+              <i :class="locked(world) ? 'is-locked' : (owned(world) ? 'is-owned' : 'is-open')">
+                {{ locked(world) ? `Needs ${worldEgg(world).name}` : (owned(world) ? 'Collected ✓' : 'Open') }}
               </i>
             </span>
           </button>
@@ -196,6 +223,10 @@ onUnmounted(() => {
             <button type="button" class="primary" @click="togglePause">Resume</button>
             <button type="button" class="ghost" @click="quitRun">Quit run</button>
           </div>
+        </div>
+        <div v-if="held" class="eggscape-held" role="status">
+          <span>Frame held for debugging · {{ summary?.score ?? 0 }} points</span>
+          <button type="button" class="primary" @click="revealHeldResults">Show results</button>
         </div>
       </div>
 

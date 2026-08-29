@@ -3,20 +3,88 @@ import { eggs } from '../eggs.js'
 // The deck's Phase 1 shortlist: Shine EGGnyway • Move First • Come On Lah.
 // Everything world-specific is data so RunScene stays generic — adding worlds 4-10
 // later is a matter of appending records, not touching the scene.
+// `mode: 'run'` is the ground runner (Stadium, Kampung). `mode: 'hop'` is Shine:
+// one-way sunflower heads, no ground strip; the run starts on a pad.
 //
-// `locked: false` on every world because this is a demo people click through. To ship
-// the deck's collection gating, set `locked: true` and the select screen will require
-// the matching egg in the player's collection.
+// `locked: true` restores the deck's collection gating: the select screen requires
+// the matching egg in the player's collection. The farm starts with Sunny Maxx
+// (egg 0), so Shine EGGnyway is playable on a fresh save.
 export const worlds = [
   {
     id: 'shine',
     eggId: 0,
+    // Hop: one-way sunflower pads, no ground strip. Start standing on a sunflower.
+    // Stadium (`sprint`) and Kampung stay `run`.
+    mode: 'hop',
     title: 'Shine EGGnyway',
     subtitle: 'Sunflower Bounce',
-    blurb: 'A bright opening run that teaches rhythm and timing.',
-    locked: false,
-    power: { key: 'shield', name: 'Sunshine Shield', blurb: 'Absorbs 1 mistake' },
-    collectible: 'Sun Drop',
+    blurb: 'Hop sunflower heads. Miss a pad and the run is over.',
+    locked: true,
+    power: { key: 'shield', name: 'Sunshine Shield', blurb: 'Saves 1 fall' },
+    collectible: 'Golden Egg',
+    // Restyle pads are all 768-wide, but the flower fills a different share of each frame
+    // (86% on mid, 80% on tall). `width` is the whole frame, so a shared display width
+    // would hand the pads different landing areas. These widths are therefore back-solved
+    // from each frame's own head fraction to put ~150 display px of standable disc on
+    // every pad; height follows the PNG aspect.
+    //
+    // `band` is elevation, not flower size — the same flower on a shorter stem — so the
+    // short band reuses the tall art. sunflower-short.png is a zoomed-in crop whose petal
+    // ring was cropped away on its left, right and top edges, which reads as a broken
+    // sprite once the pad is scaled up enough to give a fair landing surface.
+    //
+    // One-way collider is that pad's GREEN disc in source pixels (origin top-left of the
+    // PNG), scaled with the sprite; petals / stem / leaves are not solid. `crown` is the
+    // source row where the petal ring ends and the bare stem begins — the bands are lifted
+    // to keep everything above it on screen, since a clipped petal ring reads as a broken
+    // sprite while a clipped stem just reads as rooted past the bottom edge.
+    platforms: [
+      {
+        id: 'sunflower-short',
+        band: 'short',
+        width: 187,
+        height: 172,
+        src: { w: 768, h: 708 },
+        file: 'platforms/shine/sunflower-tall.png',
+        head: { x: 84, y: 17, w: 615, h: 140 },
+        crown: 227,
+      },
+      {
+        id: 'sunflower-mid',
+        band: 'mid',
+        width: 175,
+        height: 155,
+        src: { w: 768, h: 682 },
+        file: 'platforms/shine/sunflower-mid.png',
+        head: { x: 95, y: 17, w: 657, h: 144 },
+        crown: 242,
+      },
+      {
+        id: 'sunflower-tall',
+        band: 'tall',
+        width: 187,
+        height: 172,
+        src: { w: 768, h: 708 },
+        file: 'platforms/shine/sunflower-tall.png',
+        head: { x: 84, y: 17, w: 615, h: 140 },
+        crown: 227,
+      },
+    ],
+    hazards: [],
+    sprites: {
+      boost: null, // TODO(designer): public/pickups/boost.png
+      coin: 'pickups/golden-egg.png',
+      sundrop: 'pickups/golden-egg.png',
+      hero: 'heroes/shine-runner.png',
+      // Designer hop strips: 256px cells, feet near y=242. RunScene bottom-aligns.
+      heroRun: 'heroes/shine-run.png',   // 6 cells L→R, loop 10 fps on a pad
+      heroJump: 'heroes/shine-jump.png', // rise, then apex near hang
+      heroDrop: 'heroes/shine-drop.png', // 2 cells, loop 8 fps while falling
+      heroDie: 'heroes/shine-die.png',   // splat then KO; play once, hold last
+      splash: 'fx/bounce-splash.png',
+      fg: 'bg/shine/fg.png',
+      sky: 'bg/shine/sky.png',
+    },
     palette: {
       skyTop: 0x8ed6ff,
       skyBottom: 0xffe9a8,
@@ -33,12 +101,23 @@ export const worlds = [
   {
     id: 'sprint',
     eggId: 4,
+    mode: 'run',
     title: 'Move First, Magic Follow',
     subtitle: 'Stadium Sprint',
     blurb: 'Fast reactions build a streak while trophies reward perfect timing.',
-    locked: false,
+    locked: true,
     power: { key: 'dash', name: 'First Move Dash', blurb: '3s untouchable burst' },
     collectible: 'Medal',
+    // TODO(designer): public/hazards/sprint/{hurdle,cone,trophy}.png
+    hazards: [
+      { id: 'hurdle', fallback: 'fence', width: 34, height: 68, file: null },
+      { id: 'cone', fallback: 'stump', width: 48, height: 56, file: null },
+      { id: 'trophy', fallback: 'shell', width: 62, height: 40, file: null },
+    ],
+    sprites: {
+      boost: null,
+      coin: null,
+    },
     palette: {
       skyTop: 0xff9d6b,
       skyBottom: 0xffd9c0,
@@ -55,12 +134,23 @@ export const worlds = [
   {
     id: 'kampung',
     eggId: 3,
+    mode: 'run',
     title: 'Come On Lah',
     subtitle: 'Kampung Waddle',
     blurb: 'Dodge bananas, laundry and village surprises.',
-    locked: false,
+    locked: true,
     power: { key: 'luck', name: 'Lah! Luck', blurb: 'Turns hazards into boosts' },
     collectible: 'Ketupat',
+    // TODO(designer): public/hazards/kampung/{laundry,banana,bucket}.png
+    hazards: [
+      { id: 'laundry', fallback: 'fence', width: 34, height: 68, file: null },
+      { id: 'banana', fallback: 'stump', width: 48, height: 56, file: null },
+      { id: 'bucket', fallback: 'shell', width: 62, height: 40, file: null },
+    ],
+    sprites: {
+      boost: null,
+      coin: null,
+    },
     palette: {
       skyTop: 0x2b2350,
       skyBottom: 0x6b4a7a,
@@ -80,6 +170,14 @@ export function worldById(id) {
   return worlds.find((world) => world.id === id) || worlds[0]
 }
 
+export function worldMode(world) {
+  return world.mode || 'run'
+}
+
 export function worldEgg(world) {
   return eggs[world.eggId]
+}
+
+export function worldIsLocked(world, collection) {
+  return !!world.locked && !collection.includes(world.eggId)
 }

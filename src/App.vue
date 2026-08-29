@@ -3,8 +3,10 @@ import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, react
 import { asset } from './assets.js'
 import { eggs, randomEggOfRarity, rollEggRarity } from './eggs.js'
 import { worlds } from './game/worlds.js'
+import { redeemCarton } from './qr.js'
 
 const STORAGE_KEY = 'eggbuddy-v1'
+const chickenWalkImage = `url("${asset('chicken-walk.png')}")`
 
 // Async so the overlay — and the Phaser chunk it dynamically imports — stays out of
 // the farm's initial bundle.
@@ -353,19 +355,35 @@ function onRunEnd(result) {
   revealShowTimer = window.setTimeout(() => showReveal({ ...egg, fresh }), 260)
 }
 
-function scan() {
-  const rewards = [
-    ['Chicken Feed', () => { state.food += 2 }],
-    ['Vitamins', () => { state.vitamins += 1 }],
-    ['50 Coins', () => { state.coins += 50 }],
-    ['Premium Feed', () => {
-      state.food += 3
-      state.happiness = clamp(state.happiness + 10)
-    }],
-  ]
-  const reward = rewards[Math.floor(Math.random() * rewards.length)]
-  reward[1]()
-  say(`QR scanned: ${reward[0]} unlocked! 📦`)
+const qrBusy = ref(false)
+
+// Demo-only sequence: each tap pretends a carton was scanned. Valid codes are
+// hashed in server/cartons.json; the last entry is unknown so the demo can
+// show invalid / already-used. Grants restock feed and energy only (no coins, no IAP).
+const DEMO_SCANS = ['CARTON-SHINE-01', 'CARTON-MOVE-01', 'CARTON-LAH-01', 'CARTON-FAKE-01']
+let demoScanIndex = 0
+
+async function scan() {
+  if (qrBusy.value) return
+  qrBusy.value = true
+  try {
+    const code = DEMO_SCANS[demoScanIndex % DEMO_SCANS.length]
+    demoScanIndex++
+    const result = await redeemCarton(code)
+    if (!result.ok) return say(result.error)
+
+    const food = Number.isFinite(result.reward?.food) ? Math.max(0, Math.floor(result.reward.food)) : 0
+    const energy = Number.isFinite(result.reward?.energy) ? Math.max(0, Math.floor(result.reward.energy)) : 0
+    if (food) state.food += food
+    if (energy) state.energy = clamp(state.energy + energy)
+
+    const bits = []
+    if (food) bits.push(`+${food} feed`)
+    if (energy) bits.push(`+${energy} energy`)
+    say(`QR scanned: ${result.reward?.label || 'Restock'} unlocked!${bits.length ? ` ${bits.join(' · ')}` : ''} 📦`)
+  } finally {
+    qrBusy.value = false
+  }
 }
 
 function reset() {
@@ -424,7 +442,11 @@ onUnmounted(() => {
 
     <main>
       <section class="hero card">
-        <div :class="['scene', `action-${activeAction}`]" aria-hidden="true">
+        <div
+          :class="['scene', `action-${activeAction}`]"
+          :style="{ '--chicken-walk': chickenWalkImage }"
+          aria-hidden="true"
+        >
           <div class="sky-shine"></div>
           <div class="sun"></div>
           <div class="cloud-belt">
@@ -532,9 +554,11 @@ onUnmounted(() => {
         <div>
           <span class="eyebrow">REAL PRODUCT → DIGITAL REWARD</span>
           <h2>Scan your EGGbuddy QR</h2>
-          <p>In production, each carton code can be unique and single-use. This demo gives a random feed, vitamin, coin or premium reward.</p>
+          <p>In production, each carton QR is unique and single-use. This demo pretends to scan one and restocks feed and energy — never coins, never pay in-app.</p>
         </div>
-        <button type="button" class="scan" @click="scan">▦<span>Scan demo QR</span></button>
+        <button type="button" class="scan" :disabled="qrBusy" @click="scan">
+          ▦<span>{{ qrBusy ? 'Scanning…' : 'Scan demo QR' }}</span>
+        </button>
       </section>
 
       <section class="collection card" aria-labelledby="collection-title">

@@ -474,7 +474,7 @@ main {
 .chicken-sprite {
   position: absolute;
   inset: 0;
-  background-image: url('/chicken-walk.png');
+  background-image: var(--chicken-walk);
   background-repeat: no-repeat;
   background-position: 0 0;
   background-size: 400% 100%;
@@ -1034,6 +1034,11 @@ h2 {
 
 .scan span {
   font-size: 13px;
+}
+
+.scan:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .collection {
@@ -1605,6 +1610,14 @@ footer {
   cursor: not-allowed;
 }
 
+.world-card.is-locked {
+  filter: grayscale(0.35);
+}
+
+.world-card.is-locked .world-art img {
+  opacity: 0.55;
+}
+
 .world-art {
   display: block;
   overflow: hidden;
@@ -1725,6 +1738,24 @@ footer {
   gap: 10px;
 }
 
+/* Sits in the bottom corner rather than over the canvas, so the held frame stays
+   fully visible for screenshots. */
+.eggscape-held {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(43, 38, 29, 0.82);
+  color: #fff8e8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.eggscape-held .primary,
 .eggscape-paused .primary,
 .result-actions .primary {
   min-height: 46px;
@@ -1738,6 +1769,13 @@ footer {
   cursor: pointer;
 }
 
+.eggscape-held .primary {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.eggscape-held .primary:active,
 .eggscape-paused .primary:active,
 .result-actions .primary:active {
   transform: translateY(2px);

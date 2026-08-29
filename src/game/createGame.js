@@ -30,12 +30,17 @@ export function pickGameSize(containerWidth, containerHeight) {
 // This module is the lazy-import entry point: nothing here is reachable from the
 // Tamagotchi's initial bundle, so Vite splits Phaser into its own chunk that only
 // downloads when the player actually opens EGGSCAPE.
-export function createGame({ parent, world, best, onRunEnd }) {
+export function createGame({ parent, world, best, onRunEnd, onPause }) {
   // The overlay awaits nextTick before calling us, so the stage has its final size here.
   const { width, height } = pickGameSize(
     parent.clientWidth || REFERENCE_WIDTH,
     parent.clientHeight || Math.round(REFERENCE_WIDTH * MIN_ASPECT_RATIO),
   )
+
+  // Opt-in via ?hopdebug on the page URL: draws Arcade collider outlines and a live
+  // readout of pad spawning / hero body state. Off by default, so production is untouched.
+  const debug = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).has('hopdebug')
 
   const game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -48,15 +53,25 @@ export function createGame({ parent, world, best, onRunEnd }) {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
+    // Phaser arms a `panicMax`-frame cool-down whenever the loop starts or the window
+    // regains focus, and every frame inside it is force-clamped to the 60fps target delta.
+    // At the default 120 frames that is the first two seconds of play: while the browser is
+    // still warming up and missing 60fps, the world advances by 16.67ms per frame instead of
+    // by real time, so the run visibly crawls and then snaps to full speed once the count
+    // runs out. Ten frames still swallow the junk delta a cold boot produces without the
+    // player ever seeing it. Frames slower than `minFps` keep their own spike protection,
+    // and Arcade's fixed 1/60s step catches up in sub-steps, so honest deltas stay
+    // collision-safe.
+    fps: { panicMax: 10 },
     physics: {
       default: 'arcade',
-      arcade: { gravity: { y: 0 }, debug: false },
+      arcade: { gravity: { y: 0 }, debug },
     },
     audio: { noAudio: true },
     scene: [RunScene],
   })
 
-  game.scene.start('run', { world, best, onRunEnd })
+  game.scene.start('run', { world, best, onRunEnd, onPause, debug })
 
   return {
     game,
