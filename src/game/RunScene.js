@@ -18,11 +18,25 @@ const AIR_JUMP_VELOCITY = JUMP_VELOCITY * 0.75
 const MAX_AIR_JUMPS = 1
 const AIR_SPIN_MS = 380
 
-// Air time is 2 * 720 / 2000 = 0.72s, so horizontal reach at the 420px/s top speed
-// is ~300px. Every spacing below is derived from that so no gap is ever unclearable.
+// Air time is 2 * 720 / 2000 = 0.72s, so horizontal reach at the 480px/s top speed
+// is ~345px. Every spacing below is derived from that so no gap is ever unclearable.
 const AIR_TIME = (2 * Math.abs(JUMP_VELOCITY)) / GRAVITY
-const BASE_SPEED = 260
-const MAX_SPEED_BONUS = 160
+// Pad gaps scale with speed, so the hop cadence only tightens from ~0.87s to ~0.73s per
+// pad across the whole ramp — the floor is what sets how brisk the run feels, which is why
+// it starts well above walking pace rather than easing up from a standstill.
+const BASE_SPEED = 330
+const MAX_SPEED_BONUS = 150
+
+// How long a run takes to reach top speed. Deliberately on the clock rather than on score:
+// score was the old input, and since every coin bumps the combo and then pays that combo
+// out, a couple of coin arcs are worth ~50 points — the entire ramp — so the run slammed
+// from base to top speed within about three jumps of starting.
+// Sized against a real run: a good one lasts roughly 25-40s, so the climb has to finish
+// inside that or the player never feels it.
+const SPEED_RAMP_MS = 30000
+// Rate per second at which the live speed chases its ramp target, so the value can never
+// step even if the target moves mid-run (a resize re-derives baseSpeed).
+const SPEED_EASE_PER_S = 2.5
 
 // A hazard only spawns if the current jump covers its span with this much room to spare.
 const CLEARANCE_MARGIN = 1.25
@@ -84,8 +98,15 @@ export default class RunScene extends Phaser.Scene {
     this.onRunEnd = data.onRunEnd || (() => {})
     this.onPause = data.onPause || (() => {})
     this.isHop = worldMode(this.world) === 'hop'
+    this.debug = data.debug === true
 
     this.reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+
+    // Which control legend the HUD and ready banner speak. Seeded off the device so the very
+    // first frame is already right, then it follows whatever the player last actually used:
+    // telling a desktop player to tap hides the only key that fires their power, and telling
+    // a phone player to press P points at a key they do not have.
+    this.keyboardHints = !this.sys.game.device.input.touch
 
     this.layout()
 
@@ -113,6 +134,7 @@ export default class RunScene extends Phaser.Scene {
     this.hopPoseKeys = null
     this.hopPoseSheets = null
     this.startPad = null
+    this.hopBodyLayoutStamp = ''
   }
 
   // Every dimension the scene uses, derived from whatever canvas createGame picked. The
@@ -166,7 +188,38 @@ export default class RunScene extends Phaser.Scene {
           return def.width * (c.w / (def.src?.w || PAD_SRC_WIDTH))
         }),
       )
+
+      // Sunflower stems hang a long way below the landing disc and are meant to run off
+      // the bottom edge — a stem rooted past the viewport reads fine, and demanding the
+      // whole sprite fit would shove every band up into the middle of the sky. So the
+      // overhang is measured at the petal ring's bottom (`crown`), not the sprite's.
+      const overhang = Math.max(0, ...pads.map((def) => {
+        const src = def.src || { w: PAD_SRC_WIDTH, h: def.height }
+        const c = def.head || DEFAULT_PAD_COLLIDER
+        const displayH = Math.round(def.width * src.h / src.w)
+        const crown = def.crown ?? src.h
+        return this.hopBands[def.band] + displayH * ((crown - c.y) / src.h) - height
+      }))
+      const lift = Math.min(
+        overhang,
+        Math.max(0, this.hopBands.tall - this.hudBottom - HERO_HEIGHT - 8),
+      )
+      if (lift > 0) {
+        this.hopBands.short -= lift
+        this.hopBands.mid -= lift
+        this.hopBands.tall -= lift
+      }
     }
+  }
+
+  // Base speed climbing to base + bonus evenly across SPEED_RAMP_MS, with the live value
+  // easing toward that target so the scroll never jumps. Pad spacing is derived from
+  // `this.speed` when a pad spawns, so a smooth ramp also keeps the gaps growing smoothly.
+  rampedSpeed(time, dt) {
+    const elapsed = Math.max(0, time - this.startedAt)
+    const progress = Math.min(1, elapsed / SPEED_RAMP_MS)
+    const target = this.baseSpeed + this.maxSpeedBonus * progress
+    return this.speed + (target - this.speed) * Math.min(1, dt * SPEED_EASE_PER_S)
   }
 
   // How far the egg travels horizontally during one jump, at the current speed.
@@ -281,6 +334,36 @@ export default class RunScene extends Phaser.Scene {
     this.buildHud()
     this.buildReadyBanner()
     this.bindInput()
+    if (this.debug) this.buildDebugReadout()
+  }
+
+  buildDebugReadout() {
+    // Debug-only handle so an automated probe can read live scene state.
+    if (typeof window !== 'undefined') window.__eggscapeScene = this
+    this.debugText = this.add.text(8, 8, '', {
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      color: '#000000',
+      backgroundColor: 'rgba(255,255,255,0.8)',
+      padding: { x: 6, y: 4 },
+    }).setScrollFactor(0).setDepth(40)
+  }
+
+  updateDebugReadout() {
+    if (!this.debugText || !this.hero?.body) return
+    const live = this.platforms ? this.platforms.getChildren().filter((p) => p.active) : []
+    const xs = live.map((p) => Math.round(p.x)).sort((a, b) => a - b)
+    const body = this.hero.body
+    const grounded = body.blocked.down || body.touching.down
+    this.debugText.setText([
+      `phase=${this.phase}  speed=${Math.round(this.speed)}  score=${this.score}`,
+      `pads=${live.length}  ahead=${this.isHop ? this.padsAheadOfHero() : 0}  fillTo=${this.width + 40}`,
+      `padX=[${xs.join(', ')}]`,
+      `rightmost=${this.rightmostPad?.active ? Math.round(this.rightmostPad.x) : 'DEAD'}`,
+      `sprite=(${Math.round(this.hero.x)}, ${Math.round(this.hero.y)})  body=(${Math.round(body.x)}, ${Math.round(body.y)})`,
+      `vy=${Math.round(body.velocity.y)}  grounded=${grounded}  ceiling=${Math.round(this.heroCeiling)}`,
+      `bands=${JSON.stringify(Object.fromEntries(Object.entries(this.hopBands || {}).map(([k, v]) => [k, Math.round(v)])))}`,
+    ].join('\n'))
   }
 
   // ---------------------------------------------------------------- textures
@@ -544,7 +627,7 @@ export default class RunScene extends Phaser.Scene {
       const art = this.resolveArt('fg', 'fg', 220, strip)
       this.groundTile = this.add
         .tileSprite(0, this.height - strip, this.width, strip, art.texture)
-        .setOrigin(0, 0).setDepth(12)
+        .setOrigin(0, 0).setDepth(2)
       this.groundBody = null
       return
     }
@@ -609,7 +692,7 @@ export default class RunScene extends Phaser.Scene {
     this.hero.body.setOffset((frame.width - bodyW) / 2, frame.height - bodyH - sink / scale)
     // Origin changed after physics.add.sprite (default 0.5, 0.5). Sync the
     // hitbox now so hop does not start a body-length above/through the pad.
-    this.hero.body.updateFromGameObject()
+    this.syncBody(this.hero.body)
     this.hero.body.setGravityY(GRAVITY)
     if (this.isHop) this.hero.body.setMaxVelocity(0, 1100)
 
@@ -617,6 +700,10 @@ export default class RunScene extends Phaser.Scene {
     // the body, whose top sits well below the sprite's — the art has rays and hair above
     // the hitbox, and ignoring that inset would let the egg's crown clip off screen.
     this.heroCeiling = 2 + this.hero.body.offset.y * scale
+
+    // Pose strips have their own cell size, so the hitbox has to be remapped off the
+    // live frame before the first physics step or the egg drops through the start pad.
+    if (this.isHop) this.refreshHopHeroHitbox(true)
 
     if (!this.isHop) {
       this.physics.add.collider(this.hero, this.groundBody, () => {
@@ -656,7 +743,7 @@ export default class RunScene extends Phaser.Scene {
       },
       (hero, pad) => {
         if (hero.body.velocity.y < 0) return false
-        const slop = Math.max(16, hero.body.deltaY() + 4)
+        const slop = Math.max(24, hero.body.deltaY() + 8)
         return hero.body.bottom <= pad.body.top + slop
       },
     )
@@ -810,8 +897,30 @@ export default class RunScene extends Phaser.Scene {
 
   // Rect in the wide layout, circle in the compact one — one call site for bindInput.
   pointInPower(x, y) {
-    if (this.powerCircle) return Phaser.Geom.Circle.Contains(this.powerCircle, x, y)
-    return Phaser.Geom.Rectangle.Contains(this.powerRect, x, y)
+    const slop = this.powerHitSlop()
+    if (this.powerCircle) {
+      const c = this.powerCircle
+      return Phaser.Math.Distance.Between(x, y, c.x, c.y) <= c.radius + slop
+    }
+    const r = this.powerRect
+    return x >= r.x - slop && x <= r.right + slop && y >= r.y - slop && y <= r.bottom + slop
+  }
+
+  // Forgiveness around the power button, and only once it is charged: a thumb is far blunter
+  // than a cursor, but an idle button that swallowed taps from this far out would cost the
+  // player jumps it cannot pay for. The compact canvas draws every logical pixel smaller, so
+  // it needs more of them to cover the same patch of thumb. Pause is hit-tested first, so
+  // growing this can never eat the pause button sitting 8px to its right.
+  powerHitSlop() {
+    if (this.power < 100) return 0
+    if (this.compact) return 26
+    return this.sys.game.device.input.touch ? 20 : 12
+  }
+
+  // Roomy panels can spell the action out; the compact circle only has room for a short one.
+  powerActionHint(short = false) {
+    if (this.keyboardHints) return 'PRESS P'
+    return short ? 'GO!' : 'TAP TO USE!'
   }
 
   pointInPause(x, y) {
@@ -858,7 +967,7 @@ export default class RunScene extends Phaser.Scene {
         )
         this.powerPanel.strokePath()
       }
-      this.powerHint.setText(ready ? 'GO!' : `${Math.round(this.power)}%`)
+      this.powerHint.setText(ready ? this.powerActionHint(true) : `${Math.round(this.power)}%`)
       return
     }
 
@@ -868,7 +977,7 @@ export default class RunScene extends Phaser.Scene {
     this.powerPanel.fillStyle(0x000000, 0.35).fillRoundedRect(r.x + 12, r.y + 38, r.width - 24, 7, 4)
     this.powerPanel.fillStyle(this.world.palette.accent, 1)
       .fillRoundedRect(r.x + 12, r.y + 38, (r.width - 24) * (this.power / 100), 7, 4)
-    this.powerHint.setText(ready ? 'TAP TO USE!' : this.world.power.blurb)
+    this.powerHint.setText(ready ? this.powerActionHint() : this.world.power.blurb)
   }
 
   updateHopHud(ready) {
@@ -892,7 +1001,7 @@ export default class RunScene extends Phaser.Scene {
         .fillRoundedRect(bar.x, bar.y, bar.width * (this.combo / MAX_COMBO), bar.height, 4)
     }
 
-    this.powerHint.setText(ready ? 'TAP TO USE!' : 'Absorbs 1 mistake!')
+    this.powerHint.setText(ready ? this.powerActionHint() : 'Absorbs 1 mistake!')
   }
 
   buildReadyBanner() {
@@ -921,11 +1030,12 @@ export default class RunScene extends Phaser.Scene {
       fontFamily: FONT, fontSize: '16px', fontStyle: '700', color: '#a2703a',
     }).setOrigin(0.5)
 
+    const act = this.keyboardHints ? 'SPACE' : 'TAP'
     const cta = this.add.text(0, 34, this.isHop
-      ? (this.compact ? 'TAP to hop · land on flowers' : 'TAP to hop  ·  land on sunflower heads')
+      ? (this.compact ? `${act} to hop · land on flowers` : `${act} to hop  ·  land on sunflower heads`)
       : (this.compact
-        ? 'TAP to jump · again mid-air'
-        : 'TAP to jump  ·  TAP AGAIN mid-air to double jump'), {
+        ? `${act} to jump · again mid-air`
+        : `${act} to jump  ·  ${act} AGAIN mid-air to double jump`), {
       fontFamily: FONT, fontSize: '15px', fontStyle: '800', color: '#2e7dd7',
     }).setOrigin(0.5)
 
@@ -959,6 +1069,21 @@ export default class RunScene extends Phaser.Scene {
     }).setOrigin(0.5)
 
     this.readyGroup.add([plate, sun(-w / 2 + 28), sun(w / 2 - 28), title])
+
+    // Keyboard only. The plate is Jonas's mock and stays pixel-identical on touch, but a
+    // desktop player has nothing on screen telling them which keys drive the egg — the power
+    // button's own label is the only mention of P, and that appears once it is charged.
+    if (this.keyboardHints) {
+      this.readyGroup.add(this.add.text(0, 42, 'SPACE to hop  ·  P for power', {
+        fontFamily: FONT,
+        fontSize: this.compact ? '11px' : '13px',
+        fontStyle: '800',
+        color: '#a2540f',
+        stroke: '#fff8e8',
+        strokeThickness: 4,
+      }).setOrigin(0.5))
+    }
+
     this.bobReadyBanner(restY)
   }
 
@@ -974,6 +1099,7 @@ export default class RunScene extends Phaser.Scene {
 
   bindInput() {
     this.input.on('pointerdown', (pointer) => {
+      this.setKeyboardHints(false)
       if (this.pointInPause(pointer.x, pointer.y)) {
         this.onPause()
         return
@@ -988,9 +1114,19 @@ export default class RunScene extends Phaser.Scene {
     // Without capture, Space and ArrowUp scroll the page behind the overlay while the
     // player is trying to jump.
     this.input.keyboard.addCapture('SPACE,UP,P')
-    this.input.keyboard.on('keydown-SPACE', () => this.tap())
-    this.input.keyboard.on('keydown-UP', () => this.tap())
-    this.input.keyboard.on('keydown-P', () => this.usePower())
+    const onKey = (name, fn) => this.input.keyboard.on(`keydown-${name}`, () => {
+      this.setKeyboardHints(true)
+      fn()
+    })
+    onKey('SPACE', () => this.tap())
+    onKey('UP', () => this.tap())
+    onKey('P', () => this.usePower())
+  }
+
+  setKeyboardHints(on) {
+    if (this.keyboardHints === on) return
+    this.keyboardHints = on
+    this.updateHud()
   }
 
   // ------------------------------------------------------------------- input
@@ -1038,6 +1174,9 @@ export default class RunScene extends Phaser.Scene {
   update(time, delta) {
     const dt = delta / 1000
 
+    // Before the early returns: a frozen phase is exactly what we want reported.
+    if (this.debug) this.updateDebugReadout()
+
     if (this.phase === 'over') return
 
     if (this.phase === 'dying') {
@@ -1048,11 +1187,12 @@ export default class RunScene extends Phaser.Scene {
     if (this.phase === 'ready') {
       this.scrollBackground(this.baseSpeed * 0.25, dt)
       this.bobHero(time)
+      if (this.isHop) this.seatHopHeroOnFirstPad()
       return
     }
 
     const dashing = time < this.dashUntil
-    this.speed = this.baseSpeed + Math.min(this.maxSpeedBonus, this.score * 3 * this.motion)
+    this.speed = this.rampedSpeed(time, dt)
     const speed = this.speed * (dashing ? 1.5 : 1)
 
     this.scrollBackground(speed, dt)
@@ -1063,9 +1203,14 @@ export default class RunScene extends Phaser.Scene {
     if (this.isHop) {
       this.hero.setX(this.heroX)
       this.hero.body.setVelocityX(0)
+      // The sprite is pinned above; keep the hitbox centred on it too, or the two drift
+      // apart and the egg falls through pads that look like they are right underneath.
+      this.hero.body.x = this.heroX - this.hero.body.halfWidth
+      // Spawn before the group velocities are set, or a pad created this frame sits still
+      // while the rest of the chain scrolls, widening the gap behind it by a frame's travel.
+      this.maybeSpawnHopPads()
       this.platforms.setVelocityX(-speed)
       this.coins.setVelocityX(-speed)
-      this.maybeSpawnHopPads()
       this.checkHopFall()
       this.updateHopTrail(time)
     } else {
@@ -1087,7 +1232,7 @@ export default class RunScene extends Phaser.Scene {
   scrollBackground(speed, dt) {
     if (this.hillFar) this.hillFar.tilePositionX += speed * dt * 0.18
     if (this.hillNear) this.hillNear.tilePositionX += speed * dt * 0.42
-    if (this.groundTile) this.groundTile.tilePositionX += speed * dt
+    if (this.groundTile && this.phase === 'running') this.groundTile.tilePositionX += speed * dt
 
     for (const cloud of this.clouds) {
       cloud.x -= speed * dt * 0.08
@@ -1274,6 +1419,7 @@ export default class RunScene extends Phaser.Scene {
     this.hero.setScale(rest)
     this.hero.setTint(0xffffff)
     if (this.time.now >= this.spinUntil) this.hero.setAngle(0)
+    this.refreshHopHeroHitbox()
   }
 
   applyHopIdleOrFallback(pose, time) {
@@ -1288,6 +1434,7 @@ export default class RunScene extends Phaser.Scene {
     } else {
       this.applyHopFallbackPose(pose, rest, time)
     }
+    this.refreshHopHeroHitbox()
   }
 
   applyHopFallbackPose(pose, rest, time) {
@@ -1731,21 +1878,61 @@ export default class RunScene extends Phaser.Scene {
     return pick.band
   }
 
-  // Feet (origin 0.5, 1) on the first pad's GREEN disc collider top.
+  // Arcade's postUpdate feeds (body.position - body.prevFrame) straight back into the
+  // sprite as motion, and updateFromGameObject moves position without touching prevFrame.
+  // For a body re-seated during update() — a pad spawned this frame, or the egg's hitbox
+  // rebuilt after a pose swap — the world's preUpdate has already run, so that one-off
+  // offset correction gets applied as a teleport. On a sunflower pad it was ~310px to the
+  // right, which is what opened gaps no jump could clear.
+  syncBody(body) {
+    body.updateFromGameObject()
+    body.prev.copy(body.position)
+    body.prevFrame.copy(body.position)
+    body.autoFrame.copy(body.position)
+  }
+
+  // The hero swaps between the 384px idle image and 256px pose cells, and Arcade keeps
+  // body size / offset in *frame* pixels — so a pose change leaves the hitbox mapped to
+  // the old cell and the one-way pads reject the landing. Remap it off the live frame.
+  // Keyed on frame size, not frame index: remapping every animation cell would snap the
+  // body onto the sprite mid-flight and fight the physics step.
+  refreshHopHeroHitbox(force = false) {
+    if (!this.isHop || !this.hero?.body) return
+    const frame = this.hero.frame
+    const stamp = `${frame.width}x${frame.height}`
+    if (!force && stamp === this.hopBodyLayoutStamp) return
+    this.hopBodyLayoutStamp = stamp
+
+    // Rest scale, not the live squash / stretch, so the hitbox is a fixed size while the
+    // art bobs. `sink` keeps the body bottom 4px above the feet so the egg reads as
+    // resting *on* the disc rather than hovering over it.
+    const rest = HERO_HEIGHT / frame.height
+    const bodyW = frame.width * HERO_BODY.width
+    const bodyH = frame.height * HERO_BODY.height
+    const offsetY = frame.height - bodyH - 4 / rest
+
+    this.hero.body.setSize(bodyW, bodyH)
+    this.hero.body.setOffset((frame.width - bodyW) / 2, offsetY)
+    this.syncBody(this.hero.body)
+    this.heroBodyWidth = bodyW * rest
+    this.heroCeiling = 2 + offsetY * rest
+  }
+
+  // Feet on the first pad's GREEN disc collider top.
   // hopBands.short is that top; Arcade still needs the hitbox nested into the
   // one-way box (body.bottom sits `sink` px above the origin).
   seatHopHeroOnFirstPad() {
     const pad = this.startPad
     if (!this.isHop || !pad?.active || !this.hero?.body) return
-    pad.body.updateFromGameObject()
+    this.syncBody(pad.body)
     const discTop = pad.body.top
     this.hero.setOrigin(0.5, 1)
     this.hero.setPosition(this.heroX, discTop)
-    this.hero.body.updateFromGameObject()
+    this.refreshHopHeroHitbox(true)
     const gap = discTop - this.hero.body.bottom
     if (gap > -2) {
       this.hero.y += gap + 2
-      this.hero.body.updateFromGameObject()
+      this.refreshHopHeroHitbox(true)
     }
     this.hero.body.stop()
     this.hero.body.setVelocity(0, 0)
@@ -1755,11 +1942,33 @@ export default class RunScene extends Phaser.Scene {
 
   maybeSpawnHopPads() {
     let guard = 0
-    while (guard++ < 8) {
-      const prev = this.rightmostPad?.active ? this.rightmostPad : null
-      if (prev && prev.x >= this.width + 40) break
+    // Queue pads past the right edge *and* keep a few live ones ahead of the egg. The
+    // right-edge check alone trusts a single cursor; if that ever stalls the player hops
+    // into empty sky, so the pads-ahead count is what actually guarantees a next flower.
+    while (guard++ < 12) {
+      const prev = this.rightmostActivePad()
+      if (prev && prev.x >= this.width + 40 && this.padsAheadOfHero() >= 3) break
       this.rightmostPad = this.spawnHopPad(prev)
     }
+  }
+
+  padsAheadOfHero() {
+    let count = 0
+    for (const pad of this.platforms.getChildren()) {
+      if (pad.active && pad.x > this.heroX) count++
+    }
+    return count
+  }
+
+  // Falling back to the live group matters: spawnHopPad treats a missing `prev` as the
+  // run's first pad and drops it on the egg, so a recycled cursor must not read as null.
+  rightmostActivePad() {
+    if (this.rightmostPad?.active) return this.rightmostPad
+    let best = null
+    for (const pad of this.platforms.getChildren()) {
+      if (pad.active && (!best || pad.x > best.x)) best = pad
+    }
+    return best
   }
 
   spawnHopPad(prev) {
@@ -1788,7 +1997,7 @@ export default class RunScene extends Phaser.Scene {
     // Origin at sprite top; shift so the pad collider's top sits on the hop band.
     const spriteY = landingY - displayH * (collider.y / src.h)
     const pad = this.platforms.create(x, spriteY, art.texture)
-    pad.setDepth(4)
+    pad.setDepth(8)
     pad.setOrigin(0.5, 0)
     if (pad.frame.width > 0) {
       displayH = Math.round(displayW * pad.frame.height / pad.frame.width)
@@ -1805,11 +2014,15 @@ export default class RunScene extends Phaser.Scene {
     )
     pad.body.setImmovable(true)
     pad.body.setAllowGravity(false)
+    // Pads are immovable but they *move*, and Arcade's ride-along code shifts a resting
+    // body by the platform's delta * friction.x. The egg is pinned to heroX, so any drag
+    // desyncs its hitbox from the sprite and later pads stop connecting.
+    pad.body.setFriction(0, 0)
     pad.body.checkCollision.up = true
     pad.body.checkCollision.down = false
     pad.body.checkCollision.left = false
     pad.body.checkCollision.right = false
-    pad.body.updateFromGameObject()
+    this.syncBody(pad.body)
     if (start) this.startPad = pad
 
     const land = this.padLandDisplay({ ...def, width: displayW, height: displayH })

@@ -22,36 +22,52 @@ export const worlds = [
     locked: true,
     power: { key: 'shield', name: 'Sunshine Shield', blurb: 'Saves 1 fall' },
     collectible: 'Golden Egg',
-    // Restyle pads are 768-wide. Display ~176–192px so head + stem read; height follows
-    // PNG aspect. One-way collider is that pad's GREEN disc in source pixels (origin
-    // top-left of the PNG), scaled with the sprite; petals / stem / leaves are not solid.
+    // Restyle pads are all 768-wide, but the flower fills a different share of each frame
+    // (86% on mid, 80% on tall). `width` is the whole frame, so a shared display width
+    // would hand the pads different landing areas. These widths are therefore back-solved
+    // from each frame's own head fraction to put ~150 display px of standable disc on
+    // every pad; height follows the PNG aspect.
+    //
+    // `band` is elevation, not flower size — the same flower on a shorter stem — so the
+    // short band reuses the tall art. sunflower-short.png is a zoomed-in crop whose petal
+    // ring was cropped away on its left, right and top edges, which reads as a broken
+    // sprite once the pad is scaled up enough to give a fair landing surface.
+    //
+    // One-way collider is that pad's GREEN disc in source pixels (origin top-left of the
+    // PNG), scaled with the sprite; petals / stem / leaves are not solid. `crown` is the
+    // source row where the petal ring ends and the bare stem begins — the bands are lifted
+    // to keep everything above it on screen, since a clipped petal ring reads as a broken
+    // sprite while a clipped stem just reads as rooted past the bottom edge.
     platforms: [
       {
         id: 'sunflower-short',
         band: 'short',
-        width: 176,
-        height: 118,
-        src: { w: 768, h: 516 },
-        file: 'platforms/shine/sunflower-short.png',
-        head: { x: 188, y: 10, w: 392, h: 208 },
+        width: 187,
+        height: 172,
+        src: { w: 768, h: 708 },
+        file: 'platforms/shine/sunflower-tall.png',
+        head: { x: 84, y: 17, w: 615, h: 140 },
+        crown: 227,
       },
       {
         id: 'sunflower-mid',
         band: 'mid',
-        width: 184,
-        height: 163,
+        width: 175,
+        height: 155,
         src: { w: 768, h: 682 },
         file: 'platforms/shine/sunflower-mid.png',
-        head: { x: 16, y: 11, w: 737, h: 145 },
+        head: { x: 95, y: 17, w: 657, h: 144 },
+        crown: 242,
       },
       {
         id: 'sunflower-tall',
         band: 'tall',
-        width: 192,
-        height: 177,
+        width: 187,
+        height: 172,
         src: { w: 768, h: 708 },
         file: 'platforms/shine/sunflower-tall.png',
-        head: { x: 17, y: 12, w: 736, h: 153 },
+        head: { x: 84, y: 17, w: 615, h: 140 },
+        crown: 227,
       },
     ],
     hazards: [],
