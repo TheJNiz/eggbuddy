@@ -58,8 +58,8 @@ const INVULNERABLE_MS = 1200
 const MAX_COMBO = 8
 const START_LIVES = 3
 
-// Hop pads: GREEN disc in source PNG pixels, scaled with the sprite.
-// Petals + stem are visual. The old 7px / 48px lip is gone — landable is the full disc.
+// Hop pads: per-pad GREEN disc in source PNG pixels, scaled with the sprite.
+// Petals / stem are visual, so falling past a pad without landing is a miss.
 const DEFAULT_PAD_COLLIDER = { x: 16, y: 11, w: 737, h: 145 }
 const PAD_SRC_WIDTH = 768
 
@@ -370,8 +370,7 @@ export default class RunScene extends Phaser.Scene {
   }
 
   // Palette sunflowers until designer PNGs land. Same fallback pattern as the
-  // fence/stump/shell — not replacement art. Head sits at the top of the texture
-  // so the shared pad strip covers the landable face; stem hangs below, visual only.
+  // fence/stump/shell — not replacement art. GREEN disc matches `def.head`; stem hangs below.
   buildSunflowerTextures() {
     const defs = worldPlatforms(this.world)
     const byBand = Object.fromEntries(defs.map((def) => [def.band, def]))
@@ -458,27 +457,18 @@ export default class RunScene extends Phaser.Scene {
     this.hillNear = null
     this.clouds = []
 
-    this.skyTile = null
     const skyKey = artKey(this.world.id, 'sky')
     const hopSky = this.isHop && this.textures.exists(skyKey)
 
     // Graphics.fillGradientStyle only gradients under WebGL — under the Canvas renderer
     // it silently no-ops and every world ends up showing the config's background colour.
     // A canvas-texture gradient renders identically under both.
-    if (hopSky) {
-      const img = this.textures.get(skyKey).getSourceImage()
-      const cover = Math.max(this.width / img.width, this.height / img.height)
-      this.skyTile = this.add.tileSprite(0, 0, this.width, this.height, skyKey)
-        .setOrigin(0, 0)
-        .setDepth(-3)
-      this.skyTile.setTileScale(cover, cover)
-      return
-    }
-
-    this.add.image(0, 0, this.makeSkyTexture())
+    this.add.image(0, 0, hopSky ? skyKey : this.makeSkyTexture())
       .setOrigin(0, 0)
       .setDisplaySize(this.width, this.height)
       .setDepth(-3)
+
+    if (hopSky) return
 
     // The open sky between the HUD and the hilltops. On a phone held sideways there is
     // barely any, so the sun is sized to fit and dropped entirely rather than jammed
@@ -623,7 +613,7 @@ export default class RunScene extends Phaser.Scene {
       this.platforms,
       (hero, pad) => {
         if (!this.wasGrounded) {
-          this.onLand(pad)
+          this.onLand()
           if (this.phase === 'running') this.scoreHopLanding(pad)
         }
       },
@@ -699,9 +689,6 @@ export default class RunScene extends Phaser.Scene {
     const centerW = this.powerRect.x - centerLeft - 12
     const col = Math.max(64, centerW / 3)
     const cy = top + 6
-    this.hudPanels
-      .fillStyle(0xffc61a, 0.96)
-      .fillRoundedRect(centerLeft - 10, top, centerW + 12, compact ? 56 : 64, 16)
     text(centerLeft, cy, compact ? 10 : 12, '#2b4a7a', '800').setText('SCORE')
     this.scoreText = text(centerLeft, cy + (compact ? 14 : 16), compact ? 22 : 28, '#f08a28')
     text(centerLeft + col, cy, compact ? 10 : 12, '#2b4a7a', '800').setText('BEST')
@@ -801,7 +788,7 @@ export default class RunScene extends Phaser.Scene {
     if (this.isHop) {
       this.bestText.setText(String(Math.max(this.best, this.score)))
       this.comboText.setText(`× ${this.combo}`)
-      this.heartsText.setText('❤️'.repeat(this.lives))
+      this.heartsText.setText('❤️'.repeat(this.lives) + '🤍'.repeat(Math.max(0, START_LIVES - this.lives)))
     } else {
       this.bestText.setText(this.compact
         ? `BEST ${Math.max(this.best, this.score)}`
@@ -1055,10 +1042,9 @@ export default class RunScene extends Phaser.Scene {
   }
 
   scrollBackground(speed, dt) {
-    if (this.skyTile) this.skyTile.tilePositionX += speed * dt * 0.12
     if (this.hillFar) this.hillFar.tilePositionX += speed * dt * 0.18
     if (this.hillNear) this.hillNear.tilePositionX += speed * dt * 0.42
-    if (this.groundTile) this.groundTile.tilePositionX += speed * dt * (this.isHop ? 0.7 : 1)
+    if (this.groundTile) this.groundTile.tilePositionX += speed * dt
 
     for (const cloud of this.clouds) {
       cloud.x -= speed * dt * 0.08
@@ -1128,13 +1114,9 @@ export default class RunScene extends Phaser.Scene {
     })
   }
 
-  onLand(pad) {
-    if (this.isHop) {
-      const y = pad?.getData('landingY') ?? this.hero.y
-      this.spawnBounceSplash(this.hero.x, y, pad?.getData('headWidth'))
-    } else {
-      this.spawnDust(this.hero.x - 6, this.groundY, 4)
-    }
+  onLand() {
+    if (this.isHop) this.spawnBounceSplash(this.hero.x, this.hero.y)
+    else this.spawnDust(this.hero.x - 6, this.groundY, 4)
     if (this.reduceMotion) return
     this.hero.setScale(this.hero.scaleX * 1.12, this.hero.scaleY * 0.88)
     this.tweens.add({
@@ -1426,11 +1408,9 @@ export default class RunScene extends Phaser.Scene {
     }
   }
 
-  spawnBounceSplash(x, y, headW = 72) {
-    const w = Phaser.Math.Clamp((headW || 72) * 0.9, 52, 120)
-    const h = w * (184 / 256)
-    const art = this.resolveArt('splash', 'splash', w, h)
-    const splash = this.add.image(x, y + 2, art.texture)
+  spawnBounceSplash(x, y) {
+    const art = this.resolveArt('splash', 'splash', 72, 56)
+    const splash = this.add.image(x, y + 4, art.texture)
       .setOrigin(0.5, 1)
       .setDisplaySize(art.width, art.height)
       .setDepth(6)
@@ -1450,20 +1430,18 @@ export default class RunScene extends Phaser.Scene {
     if (this.reduceMotion) return
     const airborne = !(this.hero.body.blocked.down || this.hero.body.touching.down)
     if (!airborne) return
-    if (time - this.hopTrailAt < 45) return
+    if (time - this.hopTrailAt < 40) return
     this.hopTrailAt = time
-    const ghost = this.add.image(this.hero.x, this.hero.y, this.hero.texture.key, this.hero.frame.name)
-      .setOrigin(0.5, 1)
-      .setScale(this.hero.scaleX)
-      .setAngle(this.hero.angle)
-      .setAlpha(0.34)
-      .setTint(0xfff2a0)
+    const dash = this.add.image(this.hero.x - 16, this.hero.y - HERO_HEIGHT * 0.42, this.texTrail)
+      .setAlpha(0.75)
       .setDepth(21)
     this.tweens.add({
-      targets: ghost,
+      targets: dash,
+      x: dash.x - 28,
       alpha: 0,
-      duration: 260,
-      onComplete: () => ghost.destroy(),
+      scaleX: 0.3,
+      duration: 280,
+      onComplete: () => dash.destroy(),
     })
   }
 
@@ -1499,7 +1477,7 @@ export default class RunScene extends Phaser.Scene {
   // GREEN disc in source-PNG pixels. Scale it onto display size (and
   // onto whatever texture frame is actually loaded).
   padCollider(def) {
-    return def?.head || this.world.padCollider || DEFAULT_PAD_COLLIDER
+    return def?.head || DEFAULT_PAD_COLLIDER
   }
 
   padSrc(def) {
