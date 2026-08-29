@@ -112,6 +112,7 @@ export default class RunScene extends Phaser.Scene {
     this.hopPose = 'idle'
     this.hopPoseKeys = null
     this.hopPoseSheets = null
+    this.startPad = null
   }
 
   // Every dimension the scene uses, derived from whatever canvas createGame picked. The
@@ -273,7 +274,10 @@ export default class RunScene extends Phaser.Scene {
     this.buildGround()
     this.buildHero()
     this.buildGroups()
-    if (this.isHop) this.maybeSpawnHopPads()
+    if (this.isHop) {
+      this.maybeSpawnHopPads()
+      this.seatHopHeroOnFirstPad()
+    }
     this.buildHud()
     this.buildReadyBanner()
     this.bindInput()
@@ -581,6 +585,9 @@ export default class RunScene extends Phaser.Scene {
     // before the first scene update, and the squash tween needs a rest scale to return to.
     this.heroScale = scale
 
+    // Hop origin is the feet (0.5, 1). standY is the first pad's landable top
+    // (hopBands.short), not a center-origin coordinate — placing the sprite
+    // there with origin 0.5 would hang the egg in empty air / through the disc.
     const standY = this.isHop ? this.hopBands.short : this.groundY
     this.heroShadow = this.add
       .ellipse(this.heroX, standY + 1, 70, 17, 0x000000, 0.2).setDepth(2)
@@ -600,6 +607,9 @@ export default class RunScene extends Phaser.Scene {
     this.hero.body.setSize(bodyW, bodyH)
     const sink = this.hopRunner ? 4 : HERO_SINK
     this.hero.body.setOffset((frame.width - bodyW) / 2, frame.height - bodyH - sink / scale)
+    // Origin changed after physics.add.sprite (default 0.5, 0.5). Sync the
+    // hitbox now so hop does not start a body-length above/through the pad.
+    this.hero.body.updateFromGameObject()
     this.hero.body.setGravityY(GRAVITY)
     if (this.isHop) this.hero.body.setMaxVelocity(0, 1100)
 
@@ -994,6 +1004,7 @@ export default class RunScene extends Phaser.Scene {
   startRun() {
     this.phase = 'running'
     this.startedAt = this.time.now
+    if (this.isHop) this.seatHopHeroOnFirstPad()
     this.tweens.killTweensOf(this.readyGroup)
     this.tweens.add({
       targets: this.readyGroup,
@@ -1211,10 +1222,14 @@ export default class RunScene extends Phaser.Scene {
   // strip is still missing (falls back to shine-runner.png).
   hopPoseName() {
     if (this.phase === 'dying') return 'die'
+    if (this.phase === 'ready') return 'idle'
     const grounded = this.hero.body.blocked.down || this.hero.body.touching.down
     const vy = this.hero.body.velocity.y
     if (vy < 0) return 'jump'
-    if (!grounded && vy <= HOP_JUMP_APEX_VY) return 'jump'
+    // Apex hang only — vy=0 while not yet touching the start pad is idle/run,
+    // not a jump, or the 256px pose sheet desyncs the 384px idle body and the
+    // egg falls through the one-way disc.
+    if (!grounded && vy > 0 && vy <= HOP_JUMP_APEX_VY) return 'jump'
     if (vy > 0 && !grounded) return 'drop'
     if (this.phase === 'running') return 'run'
     return 'idle'
@@ -1716,6 +1731,28 @@ export default class RunScene extends Phaser.Scene {
     return pick.band
   }
 
+  // Feet (origin 0.5, 1) on the first pad's GREEN disc collider top.
+  // hopBands.short is that top; Arcade still needs the hitbox nested into the
+  // one-way box (body.bottom sits `sink` px above the origin).
+  seatHopHeroOnFirstPad() {
+    const pad = this.startPad
+    if (!this.isHop || !pad?.active || !this.hero?.body) return
+    pad.body.updateFromGameObject()
+    const discTop = pad.body.top
+    this.hero.setOrigin(0.5, 1)
+    this.hero.setPosition(this.heroX, discTop)
+    this.hero.body.updateFromGameObject()
+    const gap = discTop - this.hero.body.bottom
+    if (gap > -2) {
+      this.hero.y += gap + 2
+      this.hero.body.updateFromGameObject()
+    }
+    this.hero.body.stop()
+    this.hero.body.setVelocity(0, 0)
+    this.wasGrounded = true
+    this.lastGroundedAt = this.time.now
+  }
+
   maybeSpawnHopPads() {
     let guard = 0
     while (guard++ < 8) {
@@ -1772,6 +1809,8 @@ export default class RunScene extends Phaser.Scene {
     pad.body.checkCollision.down = false
     pad.body.checkCollision.left = false
     pad.body.checkCollision.right = false
+    pad.body.updateFromGameObject()
+    if (start) this.startPad = pad
 
     const land = this.padLandDisplay({ ...def, width: displayW, height: displayH })
     pad.setData('scored', start)
