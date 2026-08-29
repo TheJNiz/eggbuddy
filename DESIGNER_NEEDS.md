@@ -4,7 +4,7 @@ The farm and collection already have art on disk. Do not replace or redraw these
 
 - `public/eggs/` — collection badges and matching `-character.png` scenes
 - `public/chicken-walk.png` — four-frame farm walk cycle
-- `public/platforms/shine/` — Shine hop sunflower pads (768-wide restyle). Landable box is the green-disc lip `{ x: 16, y: 12, w: 736, h: 48 }` in source pixels; stem / leaves / petals are not solid.
+- `public/platforms/shine/` — Shine hop sunflower pads (768-wide restyle). Landable box is the GREEN disc only (`head` in `src/game/worlds.js`), scaled with the sprite; petals / stem / leaves are not solid. Display width ~120–140px.
 - `public/heroes/shine-runner.png` — isolated Shine hop runner
 - `public/pickups/golden-egg.png` — hop collectible (arc between pads)
 - `public/fx/bounce-splash.png` — landing splash on the flower head
