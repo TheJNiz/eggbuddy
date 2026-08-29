@@ -80,6 +80,10 @@ const HOP_JUMP_APEX_VY = 90
 const HOP_DIE_POSE_MS = 480
 const HOP_DIE_HOLD_MS = 220
 
+// Floor for shrink-to-fit HUD text. Below this a readout is unreadable anyway, so it is
+// better to let it overrun and be seen than to shrink it into a smudge.
+const MIN_HUD_FONT = 8
+
 const POWER_PER_COIN = 6
 const POWER_PER_PERFECT = 2
 const DASH_MS = 3000
@@ -135,6 +139,10 @@ export default class RunScene extends Phaser.Scene {
     this.hopPoseSheets = null
     this.startPad = null
     this.hopBodyLayoutStamp = ''
+    this.fitTexts = []
+    this.powerThumb = null
+    this.powerThumbHint = null
+    this.hopThumbSun = null
   }
 
   // Every dimension the scene uses, derived from whatever canvas createGame picked. The
@@ -790,9 +798,16 @@ export default class RunScene extends Phaser.Scene {
       .fillStyle(0xfff6dc, 0.94).fillRoundedRect(L.x, L.y, L.width, L.height, 14)
       .lineStyle(2, 0xf0c56a, 0.95).strokeRoundedRect(L.x, L.y, L.width, L.height, 14)
 
-    text(L.x + 12, L.y + 7, compact ? 10 : 11, '#5c4a2a', '800').setText('EGGbuddy • EGGSCAPE')
-    text(L.x + (compact ? 56 : 68), L.y + (compact ? 26 : 30), compact ? 12 : 14, '#f08a28')
-      .setText('SHINE EGGNYWAY')
+    this.fitText(
+      text(L.x + 12, L.y + 7, compact ? 10 : 11, '#5c4a2a', '800').setText('EGGbuddy • EGGSCAPE'),
+      L.width - 20,
+    )
+    // Starts clear of the avatar, which shares this row.
+    const nameX = L.x + (compact ? 56 : 68)
+    this.fitText(
+      text(nameX, L.y + (compact ? 26 : 30), compact ? 12 : 14, '#f08a28').setText('SHINE EGGNYWAY'),
+      L.right - nameX - 8,
+    )
 
     const avR = compact ? 16 : 20
     const avX = L.x + 12 + avR
@@ -811,23 +826,47 @@ export default class RunScene extends Phaser.Scene {
 
     const centerLeft = L.x + L.width + 14
     const centerW = this.powerRect.x - centerLeft - 12
-    const col = Math.max(64, centerW / 3)
+    // Three even columns of whatever room is left between the two panels. A minimum width
+    // here would only ever bind on the narrow canvas — precisely where there is no room to
+    // honour it — and it pushed COMBO out from under the centre band and into the power
+    // panel. Anything that outgrows its column shrinks instead of overlapping its neighbour.
+    const col = centerW / 3
+    const colRoom = col - 6
     const cy = top + 6
-    text(centerLeft, cy, compact ? 10 : 12, '#2b4a7a', '800').setText('SCORE')
-    this.scoreText = text(centerLeft, cy + (compact ? 14 : 16), compact ? 22 : 28, '#f08a28')
-    text(centerLeft + col, cy, compact ? 10 : 12, '#2b4a7a', '800').setText('BEST')
-    this.bestText = text(centerLeft + col, cy + (compact ? 14 : 16), compact ? 22 : 28, '#2b4a7a')
-    text(centerLeft + col * 2, cy, compact ? 10 : 12, '#f08a28', '800').setText('COMBO')
-    this.comboText = text(centerLeft + col * 2, cy + (compact ? 14 : 16), compact ? 22 : 28, '#f08a28')
+    const readout = (x, color) => this.fitText(
+      text(x, cy + (compact ? 14 : 16), compact ? 22 : 28, color), colRoom,
+    )
+    const caption = (x, color, value) => this.fitText(
+      text(x, cy, compact ? 10 : 12, color, '800').setText(value), colRoom,
+    )
+
+    caption(centerLeft, '#2b4a7a', 'SCORE')
+    this.scoreText = readout(centerLeft, '#f08a28')
+    caption(centerLeft + col, '#2b4a7a', 'BEST')
+    this.bestText = readout(centerLeft + col, '#2b4a7a')
+    caption(centerLeft + col * 2, '#f08a28', 'COMBO')
+    this.comboText = readout(centerLeft + col * 2, '#f08a28')
     this.comboBarRect = new Phaser.Geom.Rectangle(
-      centerLeft + col * 2, cy + (compact ? 42 : 50), Math.min(96, col - 6), 8,
+      centerLeft + col * 2, cy + (compact ? 42 : 50), Math.min(96, colRoom), 8,
     )
 
     const r = this.powerRect
-    text(r.x + 44, r.y + 6, compact ? 10 : 11, '#c47a10', '800').setText('POWER')
-    this.powerName = text(r.x + 44, r.y + 20, compact ? 11 : 12, '#7a4a10')
-      .setText(this.world.power.name.toUpperCase())
-    this.powerHint = text(r.x + 12, r.y + (compact ? 40 : 44), compact ? 10 : 11, '#a06018', '700')
+    // The sun icon owns the panel's left edge, so the label column starts inboard of it.
+    const powerTextX = r.x + 44
+    const powerTextRoom = r.right - powerTextX - 10
+    this.fitText(
+      text(powerTextX, r.y + 6, compact ? 10 : 11, '#c47a10', '800').setText('POWER'),
+      powerTextRoom,
+    )
+    this.powerName = this.fitText(
+      text(powerTextX, r.y + 20, compact ? 11 : 12, '#7a4a10')
+        .setText(this.world.power.name.toUpperCase()),
+      powerTextRoom,
+    )
+    this.powerHint = this.fitText(
+      text(r.x + 12, r.y + (compact ? 40 : 44), compact ? 10 : 11, '#a06018', '700'),
+      r.width - 24,
+    )
     this.hopSun = this.add.image(r.x + 24, r.y + 22, this.texSunIcon)
       .setScrollFactor(0).setDepth(21)
 
@@ -835,6 +874,27 @@ export default class RunScene extends Phaser.Scene {
       this.pauseRect.x + pauseS / 2, this.pauseRect.y + pauseS / 2,
       compact ? 16 : 18, '#fff8e8',
     ).setOrigin(0.5).setText('❚❚')
+
+    // Compact hop keeps the meter in the top row so charge is always visible, but a
+    // phone thumb cannot reach that corner without covering the playfield. Once the
+    // meter fills, a second button appears in the bottom-right — the rest of the
+    // time it stays hidden so it cannot steal jumps.
+    if (compact) this.buildHopPowerThumb(text)
+  }
+
+  buildHopPowerThumb(text) {
+    const radius = 56
+    this.powerThumb = new Phaser.Geom.Circle(
+      this.width - radius - 16,
+      this.height - radius - 18,
+      radius,
+    )
+    const c = this.powerThumb
+    this.hopThumbSun = this.add.image(c.x, c.y - 10, this.texSunIcon)
+      .setScrollFactor(0).setDepth(21).setScale(1.35).setVisible(false)
+    this.powerThumbHint = text(c.x, c.y + 18, 16, '#a2540f', '900')
+      .setOrigin(0.5)
+      .setVisible(false)
   }
 
   buildWideHud(text) {
@@ -895,9 +955,45 @@ export default class RunScene extends Phaser.Scene {
       .setOrigin(0.5)
   }
 
+  // Phaser text neither wraps nor shrinks, so every string the layout does not control — a
+  // world's power name, a five-digit best, a hint that swaps between tap and key wording —
+  // can run straight out of its panel once the canvas narrows to a phone. Records the room
+  // each one has so it can be re-fitted whenever its text changes.
+  fitText(obj, maxWidth) {
+    obj.setData('fitWidth', maxWidth)
+    obj.setData('fitSize', parseInt(obj.style.fontSize, 10) || MIN_HUD_FONT)
+    this.fitTexts.push(obj)
+    return this.refitText(obj)
+  }
+
+  // Always starts from the authored size, so a readout that shrank for '10240' grows back
+  // when the next run puts a '0' in it.
+  refitText(obj) {
+    if (obj.getData('fitFor') === obj.text) return obj
+    obj.setData('fitFor', obj.text)
+
+    const room = obj.getData('fitWidth')
+    let size = obj.getData('fitSize')
+    obj.setFontSize(size)
+    while (obj.width > room && size > MIN_HUD_FONT) {
+      size -= 1
+      obj.setFontSize(size)
+    }
+    return obj
+  }
+
+  refitHudText() {
+    for (const obj of this.fitTexts) if (obj.active) this.refitText(obj)
+  }
+
   // Rect in the wide layout, circle in the compact one — one call site for bindInput.
+  // Hop-on-phone also has a thumb-reach circle that only exists while the meter is full.
   pointInPower(x, y) {
     const slop = this.powerHitSlop()
+    if (this.powerThumb && this.power >= 100) {
+      const c = this.powerThumb
+      if (Phaser.Math.Distance.Between(x, y, c.x, c.y) <= c.radius + slop) return true
+    }
     if (this.powerCircle) {
       const c = this.powerCircle
       return Phaser.Math.Distance.Between(x, y, c.x, c.y) <= c.radius + slop
@@ -928,6 +1024,11 @@ export default class RunScene extends Phaser.Scene {
   }
 
   updateHud() {
+    this.drawHud()
+    this.refitHudText()
+  }
+
+  drawHud() {
     const ready = this.power >= 100
 
     this.scoreText.setText(String(this.score))
@@ -1001,7 +1102,24 @@ export default class RunScene extends Phaser.Scene {
         .fillRoundedRect(bar.x, bar.y, bar.width * (this.combo / MAX_COMBO), bar.height, 4)
     }
 
-    this.powerHint.setText(ready ? this.powerActionHint() : 'Absorbs 1 mistake!')
+    const thumb = this.powerThumb && this.compact
+    this.powerHint.setText(ready
+      ? (thumb ? 'READY' : this.powerActionHint())
+      : 'Absorbs 1 mistake!')
+    this.drawHopPowerThumb(ready)
+  }
+
+  drawHopPowerThumb(ready) {
+    const c = this.powerThumb
+    const show = !!(c && ready)
+    this.hopThumbSun?.setVisible(show)
+    this.powerThumbHint?.setVisible(show)
+    if (!show) return
+
+    this.powerPanel.fillStyle(0xffe27a, 0.98).fillCircle(c.x, c.y, c.radius)
+    this.powerPanel.lineStyle(5, 0xf08a28, 1).strokeCircle(c.x, c.y, c.radius)
+    this.powerPanel.lineStyle(3, 0xfff8e8, 0.7).strokeCircle(c.x, c.y, c.radius - 8)
+    this.powerThumbHint.setText(this.keyboardHints ? 'P' : 'TAP')
   }
 
   buildReadyBanner() {
