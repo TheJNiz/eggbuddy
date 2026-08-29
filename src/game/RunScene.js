@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { asset } from '../assets.js'
 import { worldEgg, worldMode } from './worlds.js'
-import { artKey, hopPoseAssets, HOP_FEET_Y, HOP_POSE_CELL, worldHazards, worldPickup, worldPlatforms } from './sprites.js'
+import { artKey, hopPoseAssets, HOP_POSE_CELL, worldHazards, worldPickup, worldPlatforms } from './sprites.js'
 
 // The width the speeds and spacings below were tuned against. A narrower canvas shows
 // less track ahead, so horizontal motion is scaled by width / REFERENCE_WIDTH to keep the
@@ -1254,11 +1254,11 @@ export default class RunScene extends Phaser.Scene {
       else if (frame != null) this.hero.setFrame(frame)
     }
 
-    this.hero.setOrigin(0.5, HOP_FEET_Y / cell)
+    // Origin 0.5,1 matches buildHero so pad landings and gravity stay put.
+    this.hero.setOrigin(0.5, 1)
     this.hero.setScale(rest)
     this.hero.setTint(0xffffff)
     if (this.time.now >= this.spinUntil) this.hero.setAngle(0)
-    this.syncHopHeroBody(cell, rest)
   }
 
   applyHopIdleOrFallback(pose, time) {
@@ -1274,16 +1274,6 @@ export default class RunScene extends Phaser.Scene {
       this.applyHopFallbackPose(pose, rest, time)
     }
   }
-
-  syncHopHeroBody(cell, scale) {
-    const bodyW = cell * HERO_BODY.width
-    const bodyH = cell * HERO_BODY.height
-    this.heroBodyWidth = bodyW * scale
-    if (Math.abs(this.hero.body.width - bodyW) < 0.5 && Math.abs(this.hero.body.height - bodyH) < 0.5) return
-    this.hero.body.setSize(bodyW, bodyH)
-    this.hero.body.setOffset((cell - bodyW) / 2, HOP_FEET_Y - bodyH - 4 / scale)
-  }
-
 
   applyHopFallbackPose(pose, rest, time) {
     const spinning = time < this.spinUntil
