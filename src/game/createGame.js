@@ -30,7 +30,7 @@ export function pickGameSize(containerWidth, containerHeight) {
 // This module is the lazy-import entry point: nothing here is reachable from the
 // Tamagotchi's initial bundle, so Vite splits Phaser into its own chunk that only
 // downloads when the player actually opens EGGSCAPE.
-export function createGame({ parent, world, best, onRunEnd }) {
+export function createGame({ parent, world, best, onRunEnd, onPause }) {
   // The overlay awaits nextTick before calling us, so the stage has its final size here.
   const { width, height } = pickGameSize(
     parent.clientWidth || REFERENCE_WIDTH,
@@ -56,7 +56,7 @@ export function createGame({ parent, world, best, onRunEnd }) {
     scene: [RunScene],
   })
 
-  game.scene.start('run', { world, best, onRunEnd })
+  game.scene.start('run', { world, best, onRunEnd, onPause })
 
   return {
     game,

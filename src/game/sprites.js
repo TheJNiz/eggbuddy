@@ -3,10 +3,10 @@
 // Collection badges in public/eggs are already the runner hero (cropped) and
 // the farm collection. The farm chicken uses public/chicken-walk.png.
 //
-// Shine hop pads are on disk. Remaining hazard / pickup PNGs are listed below. Each world lists the slots a
-// designer should fill. `file: null` means RunScene generates a palette
-// fallback. Point `file` at a public/ path (e.g. 'platforms/shine/sunflower-short.png')
-// once the PNG exists — preload will load it and spawn will use it.
+// Shine hop pads, runner, splash, golden egg, sky and foreground are on disk.
+// Remaining Stadium / Kampung hazard PNGs and the luck boost pad are listed below.
+// `file: null` means RunScene generates a palette fallback. Point `file` at a
+// public/ path once the PNG exists — preload will load it and spawn will use it.
 
 export const DEFAULT_HAZARDS = [
   { id: 'fence', fallback: 'fence', width: 34, height: 68, file: null },
@@ -23,7 +23,6 @@ export const DESIGNER_NEEDS = [
   { path: 'hazards/kampung/banana.png', use: 'Kampung Waddle — banana peel' },
   { path: 'hazards/kampung/bucket.png', use: 'Kampung Waddle — pail / village clutter' },
   { path: 'pickups/boost.png', use: 'Luck power boost pad' },
-  { path: 'pickups/golden-egg.png', use: 'Run collectible (replaces generated coin)' },
 ]
 
 export function artKey(worldId, id) {

@@ -21,45 +21,50 @@ export const worlds = [
     blurb: 'Hop sunflower heads. Miss a pad and the run is over.',
     locked: true,
     power: { key: 'shield', name: 'Sunshine Shield', blurb: 'Saves 1 fall' },
-    collectible: 'Sun Drop',
-    // Aligned 512-wide PNGs. Display ~176–192px so head + stem read; height follows PNG aspect
-    // (short 296/512, mid 498/512, tall 619/512). Head (PNG px from top-left)
-    // is visual only. All three share one one-way pad collider scaled with the sprite; stem / petals / leaves are not solid.
-    padCollider: { x: 8, y: 8, w: 496, h: 40 },
+    collectible: 'Golden Egg',
+    // Restyle pads are 768-wide, green disc at the top. Display ~176–192px so head + stem
+    // read; height follows PNG aspect. Head is visual only. Shared one-way pad collider
+    // is the green disc lip in source pixels, scaled with the sprite; stem / petals / leaves
+    // are not solid.
+    padCollider: { x: 16, y: 12, w: 736, h: 48 },
     platforms: [
       {
         id: 'sunflower-short',
         band: 'short',
         width: 176,
-        height: 102,
-        src: { w: 512, h: 296 },
+        height: 118,
+        src: { w: 768, h: 516 },
         file: 'platforms/shine/sunflower-short.png',
-        head: { x: 8, y: 13, w: 494, h: 200 },
+        head: { x: 16, y: 12, w: 736, h: 220 },
       },
       {
         id: 'sunflower-mid',
         band: 'mid',
         width: 184,
-        height: 179,
-        src: { w: 512, h: 498 },
+        height: 163,
+        src: { w: 768, h: 682 },
         file: 'platforms/shine/sunflower-mid.png',
-        head: { x: 8, y: 10, w: 495, h: 175 },
+        head: { x: 16, y: 12, w: 736, h: 240 },
       },
       {
         id: 'sunflower-tall',
         band: 'tall',
         width: 192,
-        height: 232,
-        src: { w: 512, h: 619 },
+        height: 177,
+        src: { w: 768, h: 708 },
         file: 'platforms/shine/sunflower-tall.png',
-        head: { x: 8, y: 8, w: 496, h: 168 },
+        head: { x: 16, y: 12, w: 736, h: 250 },
       },
     ],
     hazards: [],
     sprites: {
       boost: null, // TODO(designer): public/pickups/boost.png
-      coin: 'platforms/shine/sundrop.png',
-      sundrop: 'platforms/shine/sundrop.png',
+      coin: 'pickups/golden-egg.png',
+      sundrop: 'pickups/golden-egg.png',
+      hero: 'heroes/shine-runner.png',
+      splash: 'fx/bounce-splash.png',
+      fg: 'bg/shine/fg.png',
+      sky: 'bg/shine/sky.png',
     },
     palette: {
       skyTop: 0x8ed6ff,

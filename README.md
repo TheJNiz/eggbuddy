@@ -47,13 +47,12 @@ Three launch worlds, matching the deck's Phase 1 shortlist:
 | Come On Lah | Walao Egg | Lah! Luck — turns hazards into boost pads |
 
 Each world has a `mode`. **Shine is hop**: designer sunflower PNGs
-(`public/platforms/shine/sunflower-{short,mid,tall}.png`, 512-wide) display at ~176–192px
-with height following the PNG aspect so the head and stem both read. All three share one
-one-way pad collider `{ x: 8, y: 8, w: 496, h: 40 }` in source pixels, scaled to display
-size; the stem is visual. The run starts already standing on a sunflower — no ground
-strip at ready or at run start. Miss a pad and the run is over instantly. Sun Drops sit
-on the seed disc, not in the air between pads. Sunshine Shield saves one fall. Double
-jump is a safety net, never required.
+(`public/platforms/shine/sunflower-{short,mid,tall}.png`, 768-wide) display at ~176–192px
+so the green heads read big. The landable AABB is the GREEN disc only, scaled with the
+sprite; petals and stem are visual. One-way from above. The run starts already standing
+on a sunflower — no floor collider. Miss a pad and the run is over instantly (Sunshine
+Shield saves one fall). Golden eggs arc along the jump between pads. Sky + foreground
+PNGs are scenery only. Double jump is a safety net, never required.
 Stadium and Kampung stay the ground runner (three hearts, jump the hazards).
 
 Scoring is +1 per hazard cleared or pad landed, +2 for a tight "perfect", and coins pay out
@@ -163,4 +162,4 @@ Suggested production backend tables:
 
 ## Artwork
 The egg collection uses the transparent PNG artwork in `public/eggs`. Matching `-character.png` files are retained for future character views.
-The farm walk cycle uses `public/chicken-walk.png`, wired through `asset()` for the GitHub Pages base path. Shine hop pads and the Sun Drop live in `public/platforms/shine/`. Remaining missing EGGSCAPE sprites are listed in `src/game/sprites.js` (`DESIGNER_NEEDS`).
+The farm walk cycle uses `public/chicken-walk.png`, wired through `asset()` for the GitHub Pages base path. Shine hop pads live in `public/platforms/shine/`; hop scenery, hero, splash and golden-egg pickups live under `public/bg/shine/`, `public/heroes/`, `public/fx/` and `public/pickups/`. Remaining missing EGGSCAPE sprites are listed in `src/game/sprites.js` (`DESIGNER_NEEDS`).

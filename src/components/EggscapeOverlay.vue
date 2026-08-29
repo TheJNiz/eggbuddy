@@ -56,6 +56,9 @@ async function choose(world) {
     world,
     best: bestFor(world),
     onRunEnd: handleRunEnd,
+    onPause: () => {
+      if (phase.value === 'play' && !paused.value) togglePause()
+    },
   })
 
   // Charged only once the run genuinely exists, so a failed load never costs energy.
