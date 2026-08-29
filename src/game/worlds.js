@@ -60,6 +60,11 @@ export const worlds = [
       coin: 'pickups/golden-egg.png',
       sundrop: 'pickups/golden-egg.png',
       hero: 'heroes/shine-runner.png',
+      // Designer hop strips: 256px cells, feet near y=242. RunScene bottom-aligns.
+      heroRun: 'heroes/shine-run.png',   // 6 cells L→R, loop 10 fps on a pad
+      heroJump: 'heroes/shine-jump.png', // rise, then apex near hang
+      heroDrop: 'heroes/shine-drop.png', // 2 cells, loop 8 fps while falling
+      heroDie: 'heroes/shine-die.png',   // splat then KO; play once, hold last
       splash: 'fx/bounce-splash.png',
       fg: 'bg/shine/fg.png',
       sky: 'bg/shine/sky.png',

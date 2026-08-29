@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { asset } from '../assets.js'
 import { worldEgg, worldMode } from './worlds.js'
-import { artKey, worldHazards, worldPickup, worldPlatforms } from './sprites.js'
+import { artKey, hopPoseAssets, HOP_FEET_Y, HOP_POSE_CELL, worldHazards, worldPickup, worldPlatforms } from './sprites.js'
 
 // The width the speeds and spacings below were tuned against. A narrower canvas shows
 // less track ahead, so horizontal motion is scaled by width / REFERENCE_WIDTH to keep the
@@ -62,6 +62,9 @@ const START_LIVES = 3
 // Petals / stem are visual, so falling past a pad without landing is a miss.
 const DEFAULT_PAD_COLLIDER = { x: 16, y: 11, w: 737, h: 145 }
 const PAD_SRC_WIDTH = 768
+const HOP_JUMP_APEX_VY = 90
+const HOP_DIE_POSE_MS = 480
+const HOP_DIE_HOLD_MS = 220
 
 const POWER_PER_COIN = 6
 const POWER_PER_PERFECT = 2
@@ -106,6 +109,9 @@ export default class RunScene extends Phaser.Scene {
     this.luckUntil = 0
     this.startedAt = 0
     this.hopTrailAt = 0
+    this.hopPose = 'idle'
+    this.hopPoseKeys = null
+    this.hopPoseSheets = null
   }
 
   // Every dimension the scene uses, derived from whatever canvas createGame picked. The
@@ -196,6 +202,25 @@ export default class RunScene extends Phaser.Scene {
     queue('splash', worldPickup(this.world, 'splash'))
     queue('fg', worldPickup(this.world, 'fg'))
     queue('sky', worldPickup(this.world, 'sky'))
+    this.queueHopPoses()
+  }
+
+  // Hop-only. Stadium / Kampung keep the static collection crop until those
+  // worlds get art. Designer strips are 256px cells; missing pose slots stay
+  // unloaded so Phaser does not 404, and bindHopPoses() reuses shine-runner.png.
+  queueHopPoses() {
+    if (!this.isHop) return
+    const poses = hopPoseAssets(this.world)
+    for (const pose of ['run', 'jump', 'drop', 'die']) {
+      const spec = poses[pose]
+      if (!spec?.file) continue
+      const key = artKey(this.world.id, `hero-${pose}`)
+      if (this.textures.exists(key)) continue
+      this.load.spritesheet(key, asset(spec.file), {
+        frameWidth: spec.cell,
+        frameHeight: spec.cell,
+      })
+    }
   }
 
   fallbackTexture(name) {
@@ -538,7 +563,7 @@ export default class RunScene extends Phaser.Scene {
     const texture = this.textures.get(this.heroKey)
     const source = texture.getSourceImage()
 
-    // Isolated hop runner has no name plate. Collection badges still need the crop.
+    // Isolated hop runner has no name plate. Stadium / Kampung keep this static crop until those worlds get art.
     const frameName = this.hopRunner ? '__BASE' : 'character'
     if (!this.hopRunner && !texture.has(frameName)) {
       texture.add(
@@ -593,6 +618,8 @@ export default class RunScene extends Phaser.Scene {
       .setStrokeStyle(4, this.world.palette.accent, 0.9)
       .setVisible(false)
       .setDepth(21)
+
+    this.bindHopPoses()
   }
 
   buildGroups() {
@@ -1002,6 +1029,11 @@ export default class RunScene extends Phaser.Scene {
 
     if (this.phase === 'over') return
 
+    if (this.phase === 'dying') {
+      this.bobHero(time)
+      return
+    }
+
     if (this.phase === 'ready') {
       this.scrollBackground(this.baseSpeed * 0.25, dt)
       this.bobHero(time)
@@ -1117,7 +1149,8 @@ export default class RunScene extends Phaser.Scene {
   onLand() {
     if (this.isHop) this.spawnBounceSplash(this.hero.x, this.hero.y)
     else this.spawnDust(this.hero.x - 6, this.groundY, 4)
-    if (this.reduceMotion) return
+    // Hop pose machine owns scale/tint. Landing squash would fight it every frame.
+    if (this.reduceMotion || this.isHop) return
     this.hero.setScale(this.hero.scaleX * 1.12, this.hero.scaleY * 0.88)
     this.tweens.add({
       targets: this.hero,
@@ -1127,17 +1160,181 @@ export default class RunScene extends Phaser.Scene {
     })
   }
 
-  bobHero(time) {
-    const airborne = !(this.hero.body.blocked.down || this.hero.body.touching.down)
+  bindHopPoses() {
+    if (!this.isHop) {
+      this.hopPoseSheets = null
+      this.hopPoseKeys = null
+      return
+    }
 
-    // The double-jump flip owns the angle while it runs, so leave it alone or the two
-    // fight each other every frame.
-    if (time >= this.spinUntil) {
-      if (airborne) {
-        const rising = this.hero.body.velocity.y < 0
-        this.hero.setAngle(Phaser.Math.Linear(this.hero.angle, rising ? -12 : 10, 0.12))
-      } else {
-        this.hero.setAngle(this.reduceMotion ? 0 : Math.sin(time / 70) * 4)
+    const poses = hopPoseAssets(this.world)
+    const idleKey = this.hopRunner ? artKey(this.world.id, 'hero') : this.heroKey
+    const sheet = (pose) => {
+      const spec = poses[pose]
+      if (!spec?.file) return null
+      const key = artKey(this.world.id, `hero-${pose}`)
+      if (!this.textures.exists(key)) return null
+      return { ...spec, key, anim: `${key}-anim` }
+    }
+
+    this.hopPoseSheets = {
+      idle: this.textures.exists(idleKey) ? idleKey : this.heroKey,
+      run: sheet('run'),
+      jump: sheet('jump'),
+      drop: sheet('drop'),
+      die: sheet('die'),
+    }
+    this.hopPoseKeys = this.hopPoseSheets
+    this.createHopAnims()
+  }
+
+  createHopAnims() {
+    const make = (pose, repeat) => {
+      const spec = this.hopPoseSheets?.[pose]
+      if (!spec?.fps) return
+      if (this.anims.exists(spec.anim)) return
+      const last = Math.max(0, spec.frames - 1)
+      this.anims.create({
+        key: spec.anim,
+        frames: this.anims.generateFrameNumbers(spec.key, { start: 0, end: last }),
+        frameRate: spec.fps,
+        repeat,
+      })
+    }
+    make('run', -1)
+    make('drop', -1)
+    make('die', 0)
+  }
+
+  // Hop-only state machine. Physics (gravity, pads, shield save) are unchanged;
+  // this only swaps the designer strip frame, or squash/stretch + tint when a
+  // strip is still missing (falls back to shine-runner.png).
+  hopPoseName() {
+    if (this.phase === 'dying') return 'die'
+    const grounded = this.hero.body.blocked.down || this.hero.body.touching.down
+    const vy = this.hero.body.velocity.y
+    if (vy < 0) return 'jump'
+    if (!grounded && vy <= HOP_JUMP_APEX_VY) return 'jump'
+    if (vy > 0 && !grounded) return 'drop'
+    if (this.phase === 'running') return 'run'
+    return 'idle'
+  }
+
+  updateHopPose(time) {
+    const pose = this.hopPoseName()
+    const sheets = this.hopPoseSheets
+    const spec = sheets?.[pose]
+
+    if (pose === 'idle' || !spec) {
+      this.applyHopIdleOrFallback(pose, time)
+    } else if (pose === 'jump') {
+      const last = Math.max(0, spec.frames - 1)
+      const frame = this.hero.body.velocity.y < -HOP_JUMP_APEX_VY ? 0 : last
+      this.applyHopSheet(spec, { frame })
+    } else if (pose === 'die' && this.hopPose === 'die') {
+      this.applyHopSheet(spec, { hold: true })
+    } else {
+      this.applyHopSheet(spec, { anim: spec.anim })
+    }
+
+    this.hopPose = pose
+  }
+
+  applyHopSheet(spec, { anim, frame, hold } = {}) {
+    const cell = spec.cell || HOP_POSE_CELL
+    const rest = HERO_HEIGHT / cell
+
+    if (hold) {
+      // Die already started; keep the last (or in-flight) frame.
+    } else if (anim) {
+      if (this.hero.anims.currentAnim?.key !== anim) this.hero.play(anim)
+    } else {
+      if (this.hero.anims.isPlaying) this.hero.anims.stop()
+      if (this.hero.texture.key !== spec.key) this.hero.setTexture(spec.key, frame ?? 0)
+      else if (frame != null) this.hero.setFrame(frame)
+    }
+
+    this.hero.setOrigin(0.5, HOP_FEET_Y / cell)
+    this.hero.setScale(rest)
+    this.hero.setTint(0xffffff)
+    if (this.time.now >= this.spinUntil) this.hero.setAngle(0)
+    this.syncHopHeroBody(cell, rest)
+  }
+
+  applyHopIdleOrFallback(pose, time) {
+    const key = this.hopPoseSheets?.idle || this.heroKey
+    if (this.hero.anims.isPlaying) this.hero.anims.stop()
+    if (this.hero.texture.key !== key) this.hero.setTexture(key)
+    this.hero.setOrigin(0.5, 1)
+    const rest = HERO_HEIGHT / this.hero.frame.height
+    if (pose === 'idle') {
+      this.hero.setTint(0xffffff)
+      this.applyHopFallbackPose('idle', rest, time)
+    } else {
+      this.applyHopFallbackPose(pose, rest, time)
+    }
+  }
+
+  syncHopHeroBody(cell, scale) {
+    const bodyW = cell * HERO_BODY.width
+    const bodyH = cell * HERO_BODY.height
+    this.heroBodyWidth = bodyW * scale
+    if (Math.abs(this.hero.body.width - bodyW) < 0.5 && Math.abs(this.hero.body.height - bodyH) < 0.5) return
+    this.hero.body.setSize(bodyW, bodyH)
+    this.hero.body.setOffset((cell - bodyW) / 2, HOP_FEET_Y - bodyH - 4 / scale)
+  }
+
+
+  applyHopFallbackPose(pose, rest, time) {
+    const spinning = time < this.spinUntil
+    if (this.reduceMotion) {
+      const flat = pose === 'die' ? [1.12, 0.78, 0xff8a7a] : [1, 1, 0xffffff]
+      this.hero.setScale(rest * flat[0], rest * flat[1])
+      this.hero.setTint(flat[2])
+      if (!spinning) this.hero.setAngle(0)
+      return
+    }
+
+    if (pose === 'run') {
+      const bob = Math.sin(time / 70)
+      this.hero.setScale(rest * (1 + bob * 0.08), rest * (1 - bob * 0.08))
+      this.hero.setTint(0xffffff)
+      if (!spinning) this.hero.setAngle(bob * 5)
+    } else if (pose === 'jump') {
+      this.hero.setScale(rest * 0.88, rest * 1.16)
+      this.hero.setTint(0xfff4c2)
+      if (!spinning) this.hero.setAngle(-10)
+    } else if (pose === 'drop') {
+      this.hero.setScale(rest * 1.14, rest * 0.84)
+      this.hero.setTint(0xd4ecff)
+      if (!spinning) this.hero.setAngle(12)
+    } else if (pose === 'die') {
+      this.hero.setScale(rest * 1.24, rest * 0.58)
+      this.hero.setTint(0xff7a6e)
+      if (!spinning) this.hero.setAngle(28)
+    } else {
+      const breath = Math.sin(time / 220) * 0.03
+      this.hero.setScale(rest * (1 + breath), rest * (1 - breath))
+      this.hero.setTint(0xffffff)
+      if (!spinning) this.hero.setAngle(Math.sin(time / 90) * 2)
+    }
+  }
+
+  bobHero(time) {
+    if (this.isHop) {
+      this.updateHopPose(time)
+    } else {
+      const airborne = !(this.hero.body.blocked.down || this.hero.body.touching.down)
+
+      // The double-jump flip owns the angle while it runs, so leave it alone or the two
+      // fight each other every frame.
+      if (time >= this.spinUntil) {
+        if (airborne) {
+          const rising = this.hero.body.velocity.y < 0
+          this.hero.setAngle(Phaser.Math.Linear(this.hero.angle, rising ? -12 : 10, 0.12))
+        } else {
+          this.hero.setAngle(this.reduceMotion ? 0 : Math.sin(time / 70) * 4)
+        }
       }
     }
 
@@ -1378,7 +1575,7 @@ export default class RunScene extends Phaser.Scene {
       this.shieldRing.setAlpha(0.5 + Math.sin(time / 120) * 0.3)
     }
 
-    this.hero.setTint(time < this.dashUntil ? 0xfff0a0 : 0xffffff)
+    if (!this.isHop) this.hero.setTint(time < this.dashUntil ? 0xfff0a0 : 0xffffff)
   }
 
   magnetiseCoins(dt) {
@@ -1651,7 +1848,25 @@ export default class RunScene extends Phaser.Scene {
       this.saveHopFall()
       return
     }
-    this.endRun()
+    this.beginHopDeath()
+  }
+
+  // Visual only: freeze the egg on the die pose, then the existing endRun banner.
+  // Hop rules (no floor, shield save, one-way pads) stay untouched.
+  beginHopDeath() {
+    if (this.phase !== 'running') return
+    this.phase = 'dying'
+    this.hero.body.setVelocity(0, 0)
+    this.hero.body.setAllowGravity(false)
+    this.platforms?.setVelocityX(0)
+    this.coins.setVelocityX(0)
+    if (!this.reduceMotion) this.cameras.main.shake(160, 0.007)
+    this.updateHopPose(this.time.now)
+    const spec = this.hopPoseSheets?.die
+    const dieMs = spec?.fps
+      ? Math.round((spec.frames / spec.fps) * 1000) + HOP_DIE_HOLD_MS
+      : HOP_DIE_POSE_MS
+    this.time.delayedCall(this.reduceMotion ? 160 : dieMs, () => this.endRun())
   }
 
   saveHopFall() {
