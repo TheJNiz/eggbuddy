@@ -1,29 +1,49 @@
-// Client for the carton redeem stub. Valid codes are hashed on the server
-// (server/cartons.json) — this module never lists them.
+// Demo carton redeem — fully client-side so GitHub Pages can run it.
+// Production would hash unique codes on a backend. This catalog is the
+// demo sequence only; used codes persist in localStorage until Reset demo.
 
-const ENDPOINTS = ['/api/qr/redeem', `${import.meta.env.BASE_URL}api/qr/redeem`]
+const REDEEM_KEY = 'eggbuddy-qr-demo'
 
-export async function redeemCarton(code) {
-  const body = JSON.stringify({ code: String(code ?? '').trim() })
-  let lastError = 'Redeem is unavailable. The carton server is not running on this host.'
+const CARTONS = {
+  'CARTON-SHINE-01': { food: 2, energy: 20, label: 'Farm restock' },
+  'CARTON-MOVE-01': { food: 2, energy: 20, label: 'Farm restock' },
+  'CARTON-LAH-01': { food: 3, energy: 25, label: 'Premium carton restock' },
+}
 
-  for (const url of ENDPOINTS) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      })
-      const data = await res.json().catch(() => null)
-      // HTML 404 (API not mounted) has no JSON body — try the next path.
-      // A JSON error (unknown / already used) is the server answering: stop.
-      if (!data || typeof data !== 'object') continue
-      if (data.ok) return { ok: true, reward: data.reward }
-      return { ok: false, error: data.error || `Redeem failed (${res.status}).` }
-    } catch {
-      // Try the BASE_URL-prefixed path next (vite --base).
-    }
+function loadUsed() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(REDEEM_KEY) || '[]')
+    return new Set(Array.isArray(raw) ? raw.map(String) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function saveUsed(used) {
+  localStorage.setItem(REDEEM_KEY, JSON.stringify([...used]))
+}
+
+export function resetDemoRedemptions() {
+  localStorage.removeItem(REDEEM_KEY)
+}
+
+export function redeemCarton(code) {
+  const trimmed = String(code ?? '').trim().toUpperCase()
+  if (!trimmed) {
+    return { ok: false, error: 'Enter the code printed on your carton.' }
   }
 
-  return { ok: false, error: lastError }
+  const carton = CARTONS[trimmed]
+  if (!carton) {
+    return { ok: false, error: 'This code is not a valid EGGbuddy carton.' }
+  }
+
+  const used = loadUsed()
+  if (used.has(trimmed)) {
+    return { ok: false, error: 'This carton has already been redeemed.' }
+  }
+
+  used.add(trimmed)
+  saveUsed(used)
+  return { ok: true, reward: { ...carton } }
 }

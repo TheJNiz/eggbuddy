@@ -5,4 +5,3 @@ dist/
 .DS_Store
 *.log
 .vite/
-server/.redemptions.json

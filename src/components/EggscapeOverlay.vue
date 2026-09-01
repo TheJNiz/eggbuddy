@@ -32,6 +32,8 @@ const held = ref(false)
 let runner = null
 let disposed = false
 
+const singleWorld = worlds.length === 1
+const idleSubtitle = singleWorld ? worlds[0].subtitle : 'Pick your buddy'
 const bestFor = (world) => props.bests[world.id] || 0
 const owned = (world) => props.collection.includes(world.eggId)
 const locked = (world) => worldIsLocked(world, props.collection)
@@ -165,7 +167,7 @@ onUnmounted(() => {
       <header class="eggscape-bar">
         <div class="eggscape-brand">
           <b>EGGSCAPE</b>
-          <small>{{ activeWorld ? activeWorld.subtitle : 'Pick your buddy' }}</small>
+          <small>{{ activeWorld ? activeWorld.subtitle : idleSubtitle }}</small>
         </div>
         <div class="eggscape-bar-actions">
           <button
@@ -182,14 +184,14 @@ onUnmounted(() => {
       <!-- SELECT -->
       <div v-if="phase === 'select'" class="eggscape-select">
         <p class="eggscape-lede">
-          One tap to jump. Clear hazards, chain combos, collect golden eggs — a run costs
+          One tap to jump. Hop sunflower heads — jump for a floating ❤️ to gain an extra heart. A run costs
           <b>{{ energyCost }} energy</b> and pays out in coins.
         </p>
         <p v-if="!canRun" class="eggscape-warning" role="status">
           Your chicken is too tired for a run. Take a 💤 nap first.
         </p>
 
-        <div class="world-grid">
+        <div :class="['world-grid', singleWorld && 'is-single']">
           <button
             v-for="world in worlds"
             :key="world.id"
@@ -244,7 +246,7 @@ onUnmounted(() => {
 
         <div class="result-actions">
           <button type="button" class="primary" :disabled="!canRun" @click="playAgain">Run again</button>
-          <button type="button" class="ghost" @click="backToSelect">Change buddy</button>
+          <button v-if="!singleWorld" type="button" class="ghost" @click="backToSelect">Change buddy</button>
           <button type="button" class="ghost" @click="close">Back to farm</button>
         </div>
       </div>

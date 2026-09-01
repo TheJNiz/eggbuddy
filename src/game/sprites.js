@@ -4,9 +4,9 @@
 // the farm collection. The farm chicken uses public/chicken-walk.png.
 //
 // Shine hop pads, runner, hop pose strips, splash, golden egg, sky and foreground are on disk.
-// Remaining Stadium / Kampung hazard PNGs and the luck boost pad are listed below.
-// `file: null` means RunScene generates a palette fallback. Point `file` at a
-// public/ path once the PNG exists — preload will load it and spawn will use it.
+// Stadium / Kampung hazard PNGs and the luck boost pad stay listed below for when those
+// worlds ship (`released: false` in worlds.js). `file: null` means RunScene generates a
+// palette fallback. Point `file` at a public/ path once the PNG exists.
 
 export const DEFAULT_HAZARDS = [
   { id: 'fence', fallback: 'fence', width: 34, height: 68, file: null },

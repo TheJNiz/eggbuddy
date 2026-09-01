@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, react
 import { asset } from './assets.js'
 import { eggs, randomEggOfRarity, rollEggRarity } from './eggs.js'
 import { worlds } from './game/worlds.js'
-import { redeemCarton } from './qr.js'
+import { redeemCarton, resetDemoRedemptions } from './qr.js'
 
 const STORAGE_KEY = 'eggbuddy-v1'
 const chickenWalkImage = `url("${asset('chicken-walk.png')}")`
@@ -357,19 +357,19 @@ function onRunEnd(result) {
 
 const qrBusy = ref(false)
 
-// Demo-only sequence: each tap pretends a carton was scanned. Valid codes are
-// hashed in server/cartons.json; the last entry is unknown so the demo can
-// show invalid / already-used. Grants restock feed and energy only (no coins, no IAP).
+// Demo-only sequence: each tap pretends a carton was scanned. The last entry
+// is unknown so the demo can show invalid / already-used. Grants restock feed
+// and energy only (no coins, no IAP). Runs entirely in the browser.
 const DEMO_SCANS = ['CARTON-SHINE-01', 'CARTON-MOVE-01', 'CARTON-LAH-01', 'CARTON-FAKE-01']
 let demoScanIndex = 0
 
-async function scan() {
+function scan() {
   if (qrBusy.value) return
   qrBusy.value = true
   try {
     const code = DEMO_SCANS[demoScanIndex % DEMO_SCANS.length]
     demoScanIndex++
-    const result = await redeemCarton(code)
+    const result = redeemCarton(code)
     if (!result.ok) return say(result.error)
 
     const food = Number.isFinite(result.reward?.food) ? Math.max(0, Math.floor(result.reward.food)) : 0
@@ -388,6 +388,7 @@ async function scan() {
 
 function reset() {
   // Sound is a device preference, not save data — carry it through the reset.
+  resetDemoRedemptions()
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...defaultState(), muted: state.muted }))
   location.reload()
 }
