@@ -1,15 +1,17 @@
 import { eggs } from '../eggs.js'
 
-// The deck's Phase 1 shortlist: Shine EGGnyway • Move First • Come On Lah.
-// Everything world-specific is data so RunScene stays generic — adding worlds 4-10
-// later is a matter of appending records, not touching the scene.
+// Phase 1 shortlist lives here as data so RunScene stays generic — shipping a
+// later world is flipping `released`, not touching the scene.
 // `mode: 'run'` is the ground runner (Stadium, Kampung). `mode: 'hop'` is Shine:
 // one-way sunflower heads, no ground strip; the run starts on a pad.
+//
+// Only `released: true` worlds appear in EGGSCAPE. Shine is the current drop;
+// Stadium and Kampung stay in this file until those buddies ship.
 //
 // `locked: true` restores the deck's collection gating: the select screen requires
 // the matching egg in the player's collection. The farm starts with Sunny Maxx
 // (egg 0), so Shine EGGnyway is playable on a fresh save.
-export const worlds = [
+const ALL_WORLDS = [
   {
     id: 'shine',
     eggId: 0,
@@ -18,9 +20,10 @@ export const worlds = [
     mode: 'hop',
     title: 'Shine EGGnyway',
     subtitle: 'Sunflower Bounce',
-    blurb: 'Hop sunflower heads. Miss a pad and the run is over.',
+    blurb: 'Hop sunflower heads. Jump for a floating ❤️ to gain an extra heart.',
+    released: true,
     locked: true,
-    power: { key: 'shield', name: 'Sunshine Shield', blurb: 'Saves 1 fall' },
+    power: { key: 'shield', name: 'Sunshine Shield', blurb: '2s save' },
     collectible: 'Golden Egg',
     // Restyle pads are all 768-wide, but the flower fills a different share of each frame
     // (86% on mid, 80% on tall). `width` is the whole frame, so a shared display width
@@ -105,6 +108,7 @@ export const worlds = [
     title: 'Move First, Magic Follow',
     subtitle: 'Stadium Sprint',
     blurb: 'Fast reactions build a streak while trophies reward perfect timing.',
+    released: false,
     locked: true,
     power: { key: 'dash', name: 'First Move Dash', blurb: '3s untouchable burst' },
     collectible: 'Medal',
@@ -138,6 +142,7 @@ export const worlds = [
     title: 'Come On Lah',
     subtitle: 'Kampung Waddle',
     blurb: 'Dodge bananas, laundry and village surprises.',
+    released: false,
     locked: true,
     power: { key: 'luck', name: 'Lah! Luck', blurb: 'Turns hazards into boosts' },
     collectible: 'Ketupat',
@@ -165,6 +170,8 @@ export const worlds = [
     },
   },
 ]
+
+export const worlds = ALL_WORLDS.filter((world) => world.released)
 
 export function worldById(id) {
   return worlds.find((world) => world.id === id) || worlds[0]

@@ -86,6 +86,12 @@ const MIN_HUD_FONT = 8
 
 const POWER_PER_COIN = 6
 const POWER_PER_PERFECT = 2
+// Shine: eggs only, and less per egg — combo bumps used to double-dip and fill in ~5 hops.
+const HOP_POWER_PER_COIN = 2
+const HOP_POWER_PER_PERFECT = 0
+const HOP_SHIELD_MS = 1800
+const HOP_HEART_CHANCE = 0.1
+const HOP_HEART_MIN_GAPS = 5
 const DASH_MS = 3000
 const LUCK_MS = 5000
 
@@ -130,10 +136,12 @@ export default class RunScene extends Phaser.Scene {
     this.airJumpsUsed = 0
     this.spinUntil = 0
     this.shieldActive = false
+    this.shieldUntil = 0
     this.dashUntil = 0
     this.luckUntil = 0
     this.startedAt = 0
     this.hopTrailAt = 0
+    this.hopGapsSinceHeart = 0
     this.hopPose = 'idle'
     this.hopPoseKeys = null
     this.hopPoseSheets = null
@@ -291,6 +299,7 @@ export default class RunScene extends Phaser.Scene {
     if (name === 'boost') return this.texBoost
     if (name === 'coin') return this.texCoin
     if (name === 'sundrop') return this.texCoin
+    if (name === 'heart') return this.texHeart
     if (name === 'splash') return this.texSplash
     if (name === 'fg') return this.texHopFg
     if (name === 'sky') return this.makeSkyTexture()
@@ -473,6 +482,18 @@ export default class RunScene extends Phaser.Scene {
       g.fillStyle(0xd79b0b, 1).fillEllipse(13, 17, 24, 30)
       g.fillStyle(p.accent, 1).fillEllipse(13, 15, 22, 28)
       g.fillStyle(0xffffff, 0.7).fillEllipse(9, 10, 6, 9)
+    })
+
+    this.texHeart = this.makeTexture('heart', 32, 30, (g) => {
+      g.fillStyle(0xc41d3a, 1)
+      g.fillCircle(10, 11, 9)
+      g.fillCircle(22, 11, 9)
+      g.fillTriangle(2, 13, 30, 13, 16, 28)
+      g.fillStyle(0xff5a7a, 1)
+      g.fillCircle(10, 10, 7)
+      g.fillCircle(22, 10, 7)
+      g.fillTriangle(5, 13, 27, 13, 16, 25)
+      g.fillStyle(0xffffff, 0.55).fillCircle(8, 8, 3)
     })
 
     this.texDust = this.makeTexture('dust', 18, 18, (g) => {
@@ -1103,9 +1124,11 @@ export default class RunScene extends Phaser.Scene {
     }
 
     const thumb = this.powerThumb && this.compact
-    this.powerHint.setText(ready
-      ? (thumb ? 'READY' : this.powerActionHint())
-      : 'Absorbs 1 mistake!')
+    this.powerHint.setText(this.shieldActive
+      ? 'ACTIVE'
+      : ready
+        ? (thumb ? 'READY' : this.powerActionHint())
+        : this.world.power.blurb)
     this.drawHopPowerThumb(ready)
   }
 
@@ -1276,6 +1299,7 @@ export default class RunScene extends Phaser.Scene {
     const key = this.world.power.key
     if (key === 'shield') {
       this.shieldActive = true
+      this.shieldUntil = this.isHop ? this.time.now + HOP_SHIELD_MS : 0
       this.shieldRing.setVisible(true)
     } else if (key === 'dash') {
       this.dashUntil = this.time.now + DASH_MS
@@ -1757,11 +1781,15 @@ export default class RunScene extends Phaser.Scene {
 
   collectCoin(coin) {
     if (this.phase !== 'running') return
+    if (coin.getData('heart')) {
+      this.collectHopHeart(coin)
+      return
+    }
     const doubled = this.time.now < this.dashUntil || this.time.now < this.luckUntil
     const gain = this.combo * (doubled ? 2 : 1)
 
     this.coinsCollected++
-    this.power = Math.min(100, this.power + POWER_PER_COIN)
+    this.power = Math.min(100, this.power + (this.isHop ? HOP_POWER_PER_COIN : POWER_PER_COIN))
     this.bumpCombo()
     this.addScore(gain, coin.x, `+${gain}`)
 
@@ -1779,7 +1807,21 @@ export default class RunScene extends Phaser.Scene {
   bumpCombo() {
     this.combo = Math.min(MAX_COMBO, this.combo + 1)
     this.maxCombo = Math.max(this.maxCombo, this.combo)
-    if (this.combo > 1) this.power = Math.min(100, this.power + POWER_PER_PERFECT)
+    if (this.combo > 1) {
+      this.power = Math.min(100, this.power + (this.isHop ? HOP_POWER_PER_PERFECT : POWER_PER_PERFECT))
+    }
+  }
+
+  collectHopHeart(heart) {
+    if (this.lives < START_LIVES) {
+      this.lives++
+      this.showFloater(heart.x, heart.y - 24, '+1 ❤️', '#ff6b8a')
+      this.updateHud()
+    } else {
+      this.showFloater(heart.x, heart.y - 24, 'MAX', '#ff6b8a')
+    }
+    this.spawnSpark(heart.x, heart.y)
+    this.killCoin(heart)
   }
 
   addScore(amount, x, text, color = '#ffffff') {
@@ -1842,7 +1884,15 @@ export default class RunScene extends Phaser.Scene {
 
   updateEffects(time) {
     if (this.shieldActive) {
-      this.shieldRing.setAlpha(0.5 + Math.sin(time / 120) * 0.3)
+      if (this.shieldUntil && time >= this.shieldUntil) {
+        this.shieldActive = false
+        this.shieldUntil = 0
+        this.shieldRing.setVisible(false)
+        this.showFloater(this.hero.x, this.hero.y - 80, 'SHIELD FADED', '#c47a10')
+        this.updateHud()
+      } else {
+        this.shieldRing.setAlpha(0.5 + Math.sin(time / 120) * 0.3)
+      }
     }
 
     if (!this.isHop) this.hero.setTint(time < this.dashUntil ? 0xfff0a0 : 0xffffff)
@@ -2150,7 +2200,10 @@ export default class RunScene extends Phaser.Scene {
     pad.setData('headWidth', land.width)
     pad.setData('headHeight', land.height)
 
-    if (!start) this.spawnHopCoinArc(prev, pad)
+    if (!start) {
+      this.spawnHopCoinArc(prev, pad)
+      this.maybeSpawnHopHeart(prev, pad)
+    }
     return pad
   }
 
@@ -2185,6 +2238,46 @@ export default class RunScene extends Phaser.Scene {
     }
   }
 
+  // Random extra-life pickup, parked ABOVE the hop parabola so a normal jump
+  // skims the golden eggs and misses it — you have to double-jump to grab it.
+  maybeSpawnHopHeart(prev, pad) {
+    if (this.phase !== 'running') return
+    this.hopGapsSinceHeart++
+    if (this.lives >= START_LIVES) return
+    if (this.hopGapsSinceHeart < HOP_HEART_MIN_GAPS) return
+    if (Math.random() > HOP_HEART_CHANCE) return
+    this.hopGapsSinceHeart = 0
+    this.spawnHopHeart(prev, pad)
+  }
+
+  spawnHopHeart(prev, pad) {
+    const fromY = prev.getData('landingY')
+    const toY = pad.getData('landingY')
+    const tFlight = this.flightTime(fromY - toY) ?? AIR_TIME * 0.55
+    const u = 0.46 + Math.random() * 0.1
+    const t = tFlight * u
+    const x = prev.x + (pad.x - prev.x) * u
+    const arcY = fromY + JUMP_VELOCITY * t + 0.5 * GRAVITY * t * t
+    const y = Math.max(this.hudBottom + 28, arcY - HERO_HEIGHT - 44)
+    const art = this.resolveArt('heart', 'heart', 36, 34)
+    const heart = this.coins.create(x, y, art.texture)
+    heart.setDepth(6)
+    heart.setDisplaySize(art.width, art.height)
+    heart.body.setCircle(Math.round(heart.frame.width * 0.44), 1, 2)
+    heart.setData('heart', true)
+    if (!this.reduceMotion) {
+      this.tweens.add({
+        targets: heart,
+        y: heart.y - 12,
+        scaleX: heart.scaleX * 1.08,
+        scaleY: heart.scaleY * 1.08,
+        duration: 520,
+        yoyo: true,
+        repeat: -1,
+      })
+    }
+  }
+
   scoreHopLanding(pad) {
     if (!pad || pad.getData('scored')) return
     pad.setData('scored', true)
@@ -2201,18 +2294,26 @@ export default class RunScene extends Phaser.Scene {
 
   checkHopFall() {
     if (this.phase !== 'running') return
-    // Origin is the feet. Dropping through the old ground line is a miss —
-    // instant run over, not the 3-hit ground-runner clock.
+    // Origin is the feet. Dropping through the old ground line is a miss.
     if (this.hero.y < this.groundY + 40) return
     if (this.shieldActive) {
-      this.saveHopFall()
+      this.clearHopShield()
+      // Weaker than a heart: seats you, but the bounce is a double-jump, not a full hop.
+      this.rescueHopFall('SHIELDED!', '#ffd43b', AIR_JUMP_VELOCITY)
       return
     }
-    this.beginHopDeath()
+    this.lives--
+    this.combo = 1
+    this.updateHud()
+    if (this.lives <= 0) {
+      this.beginHopDeath()
+      return
+    }
+    if (!this.reduceMotion) this.cameras.main.shake(180, 0.008)
+    this.rescueHopFall('OUCH!', '#e23c2e', JUMP_VELOCITY)
   }
 
   // Visual only: freeze the egg on the die pose, then the existing endRun banner.
-  // Hop rules (no floor, shield save, one-way pads) stay untouched.
   beginHopDeath() {
     if (this.phase !== 'running') return
     this.phase = 'dying'
@@ -2229,9 +2330,13 @@ export default class RunScene extends Phaser.Scene {
     this.time.delayedCall(this.reduceMotion ? 160 : dieMs, () => this.endRun())
   }
 
-  saveHopFall() {
+  clearHopShield() {
     this.shieldActive = false
+    this.shieldUntil = 0
     this.shieldRing.setVisible(false)
+  }
+
+  rescueHopFall(message, color, bounce) {
     this.invulnerableUntil = this.time.now + INVULNERABLE_MS
     let y = this.hopBands.short
     if (this.platforms) {
@@ -2247,9 +2352,10 @@ export default class RunScene extends Phaser.Scene {
       }
     }
     this.hero.body.reset(this.heroX, y)
-    this.hero.body.setVelocity(0, JUMP_VELOCITY)
+    this.hero.body.setVelocity(0, bounce)
     this.airJumpsUsed = 0
-    this.showFloater(this.hero.x, this.hero.y - 80, 'SHIELDED!', '#ffd43b')
+    this.showFloater(this.hero.x, this.hero.y - 80, message, color)
+    this.updateHud()
   }
 
   recycle() {

@@ -17,7 +17,7 @@ npm run dev
 - Lay eggs when the chicken is healthy enough
 - 10 collectible IP eggs from the supplied character sheet
 - Rarity system: Common / Rare / Epic / Legendary
-- QR carton redeem stub (server-side unique codes restock feed and energy)
+- QR carton redeem demo (client-side unique codes restock feed and energy)
 - Duplicate eggs turn into coins
 - Browser localStorage persistence + offline stat decay
 - **EGGSCAPE** one-tap endless runner mini-game (see below)
@@ -38,22 +38,22 @@ everything is clearable in a *single* jump (see below). It does have a cost: a f
 jump keeps the egg airborne ~1.08s against a spawn gap of ~0.85–1.0s, so spending it can
 carry you into the next hazard or pad.
 
-Three launch worlds, matching the deck's Phase 1 shortlist:
+The current drop is **Shine EGGnyway** (Sunny Maxx). Extra hearts spawn at random above
+the hop path — double-jump to grab one (up to 3). Sunshine Shield is a 2s save with a
+weaker bounce.
+Move First / Eggxercise and Come On Lah / Walao Egg stay in `src/game/worlds.js` as
+`released: false` until those buddies ship.
 
-| World | Buddy | Signature power |
-|---|---|---|
-| Shine EGGnyway | Sunny Maxx | Sunshine Shield — saves one fall |
-| Move First, Magic Follow | Eggxercise | First Move Dash — 3s untouchable burst |
-| Come On Lah | Walao Egg | Lah! Luck — turns hazards into boost pads |
-
-Each world has a `mode`. **Shine is hop**: designer sunflower PNGs
+**Shine is hop**: designer sunflower PNGs
 (`public/platforms/shine/sunflower-{short,mid,tall}.png`, 768-wide) display at ~176–192px
 so the green heads read big. The landable AABB is the GREEN disc only, scaled with the
 sprite; petals and stem are visual. One-way from above. The run starts already standing
-on a sunflower — no floor collider. Miss a pad and the run is over instantly (Sunshine
-Shield saves one fall). Golden eggs arc along the jump between pads. Sky + foreground
-PNGs are scenery only. Double jump is a safety net, never required.
-Stadium and Kampung stay the ground runner (three hearts, jump the hazards).
+on a sunflower — no floor collider. A miss spends a heart; the last heart ends the run.
+Sunshine Shield is a short timed save, not an extra life. Golden eggs arc along the jump
+between pads. Sky + foreground PNGs are scenery only. Double jump is a safety net, never
+required.
+Stadium and Kampung stay the ground runner (three hearts, jump the hazards) for when
+those worlds flip `released`.
 
 Scoring is +1 per hazard cleared or pad landed, +2 for a tight "perfect", and coins pay out
 ×combo (combo caps at ×8, resets on a hit). The power meter fills on coin pickups; tap the
@@ -73,11 +73,12 @@ chicken fed rather than a way around it:
 
 ### Code layout
 
-- `src/game/worlds.js` — the three world definitions (mode, palette, hazards or hop pads,
-  power). Everything world-specific is data, so worlds 4–10 are new records, not new scene
-  code. Each world is `locked: true` and needs the matching collectible egg (Shine starts
-  unlocked because a fresh save already owns Sunny Maxx). Sprite slots list a `file` path;
-  `null` means the palette-generated fallback until designer art lands.
+- `src/game/worlds.js` — world definitions (mode, palette, hazards or hop pads, power).
+  Only `released: true` worlds show in EGGSCAPE (Shine today). Everything world-specific
+  is data, so later buddies are a flag flip, not new scene code. Each world is
+  `locked: true` and needs the matching collectible egg (Shine starts unlocked because a
+  fresh save already owns Sunny Maxx). Sprite slots list a `file` path; `null` means the
+  palette-generated fallback until designer art lands.
 - `src/game/sprites.js` — art-hook helpers and the designer-needs list for missing sprites.
 - `src/game/RunScene.js` — the runner itself. `world.mode` selects hop vs run inside one
   scene. It loads a world sprite when `file` is set and otherwise generates that piece from
@@ -129,19 +130,13 @@ leaves that run letterboxed until it ends, rather than killing the run to resize
 
 ## Production QR design
 
-The farm **Scan demo QR** button pretends a carton was scanned and posts to `POST /api/qr/redeem` through `src/qr.js`. There is no typed-code form and no camera.
+The farm **Scan demo QR** button pretends a carton was scanned and redeems through `src/qr.js`. There is no typed-code form, no camera, and no API — the demo catalog and single-use tracking live in the browser so GitHub Pages can run it.
 
-On the Vite dev server, a Vite plugin (`server/vitePlugin.js`) serves that route from `server/qrRedeem.js`.
-
-Valid carton codes live only as SHA-256 hashes in `server/cartons.json`.
-
-Each hash is single-use; redemptions persist in `server/.redemptions.json` (gitignored).
+Each demo code is single-use; redemptions persist in localStorage until **Reset demo**.
 
 Rewards restock feed and energy only — no coins, no IAP.
 
-GitHub Pages will not run this Node stub. Static hosting has no `/api/qr/redeem`; scan will fail there until a real backend exists.
-
-The demo button cycles three hashed local codes, then an unknown code so you can see invalid / already-redeemed (later taps wrap onto already-used):
+The demo button cycles three local codes, then an unknown code so you can see invalid / already-redeemed (later taps wrap onto already-used):
 
 1. `CARTON-SHINE-01` — +2 feed, +20 energy
 2. `CARTON-MOVE-01` — +2 feed, +20 energy
